@@ -24,7 +24,7 @@ function sections(o){
  return rows;
 }
 function areaRows(o){return sections(o).reduce((sum,r)=>sum+r.length*r.cols.reduce((s,c)=>s+c.width,0),0)}
-function location(o){const d=dims(o),mid=o.x+d.w/2;return mid<5.5?'A':'B'}
+function gardenSection(o){const d=dims(o),mid=o.x+d.w/2;return mid<5.5?'A':'B'}
 function paint(){const svg=$('map');svg.replaceChildren();const NS='http://www.w3.org/2000/svg';const add=(tag,attrs,parent=svg)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));parent.appendChild(e);return e};const pad=1;svg.setAttribute('viewBox',`0 0 ${state.width+2*pad} ${state.length+2*pad}`);add('rect',{x:pad,y:pad,width:state.width,height:state.length,fill:'#ded5b9',stroke:'#75866d','stroke-width':'.08'});
 if(state.layout==='AB-30x5'){
  for(const [x,w,fill,label] of [[0,.5,'#d1c5a9',''],[.5,5,'#c6dda9','A'],[5.5,5,'#d1e3b5','B'],[10.5,.5,'#d1c5a9','']]){
@@ -60,7 +60,7 @@ activeObjects().forEach(o=>{
   add('rect',{x:0,y:0,width:d.w,height:d.h,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.13:.04},g);
  }
  const t=add('text',{x:.1,y:.27,'font-size':'.26','font-weight':'bold',fill:'#1f432b','pointer-events':'none'},g);
- t.textContent=o.type==='bed'?`${location(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
+ t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
 });
 $('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals()}
 function renderTotals(){
@@ -75,7 +75,7 @@ function renderTotals(){
 function renderEditor(){
  const o=state.objects.find(x=>x.id===selected && visible(x));
  $('editor').hidden=!o;$('editorEmpty').hidden=!!o;
- $('editTitle').textContent=o?(o.type==='bed'?`Tuingedeelte ${location(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
+ $('editTitle').textContent=o?(o.type==='bed'?`Tuingedeelte ${gardenSection(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
  if(!o)return;
  for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).value=o[key];
  $('split').hidden=o.type!=='bed';if($('splitWidth'))$('splitWidth').hidden=o.type!=='bed';$('sectionsWrap').hidden=o.type!=='bed';

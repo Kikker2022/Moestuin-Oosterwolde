@@ -7,7 +7,7 @@ const clone=v=>JSON.parse(JSON.stringify(v));
 // Basis: 30 m lang; links 0,5 m pad, A 5 m, B 5 m, rechts 0,5 m pad.
 const initial=()=>({length:30,width:11,year:'2026',nextId:1,layout:'AB-30x5',objects:[]});
 let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial();if(!Array.isArray(state.objects)||!state.length||!state.width)throw Error()}catch{state=initial()}
-let selected=null,history=[],drag=null;
+let selected=null,selectedCell=null,history=[],drag=null;
 const HISTORY_KEY=KEY+'-history-v15';
 try {const stored=JSON.parse(localStorage.getItem(HISTORY_KEY));if(Array.isArray(stored))history=stored.filter(s=>s&&Array.isArray(s.objects)).slice(-40)}catch{}
 function storeHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history))}catch{notify('Geschiedenis kon niet worden opgeslagen')}}
@@ -51,15 +51,15 @@ activeObjects().forEach(o=>{
   add('line',{x1:d.w/2,y1:.08,x2:d.w/2,y2:d.h-.08,stroke:'#b9b29f','stroke-width':'.045','stroke-dasharray':'.18 .16'},g);
  }else{
   let along=0;
-  sections(o).forEach(row=>{
+  sections(o).forEach((row,i)=>{
    let across=0;
-   row.cols.forEach(col=>{
+   row.cols.forEach((col,j)=>{
     const crop=crops[col.crop]||crops[0];
     const x=o.rotation%180===0?across:along;
     const y=o.rotation%180===0?along:across;
     const w=o.rotation%180===0?col.width:row.length;
     const h=o.rotation%180===0?row.length:col.width;
-    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:'#385b39','stroke-width':'.065'},g);
+    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.14':'.065','data-row':i,'data-col':j},g);
     if(Math.min(w,h)>.35){
      const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':Math.min(.34,Math.max(.15,Math.min(w,h)*.3)),fill:'#233a2a','pointer-events':'none'},g);
      t.textContent=(col.crop?String(col.crop).padStart(2,'0')+' · ':'')+crop[0];
@@ -98,7 +98,7 @@ function renderEditor(){
   const title=document.createElement('strong');title.textContent=`Lengtedeel ${i+1} · ${r.length.toFixed(2)} m`;
   const splitL=document.createElement('button');splitL.className='secondary smallButton';splitL.textContent='✂ Deel deze lengtemaat';
   splitL.onclick=()=>splitLength(i);
-  heading.append(title,splitL);group.append(heading);
+  heading.append(title,splitL);if(i<sections(o).length-1){const mergeL=document.createElement('button');mergeL.className='secondary smallButton';mergeL.textContent='↔ Samenvoegen met volgend lengtedeel';mergeL.onclick=()=>mergeLength(i);heading.append(mergeL)}group.append(heading);
   const lengthLabel=document.createElement('label');lengthLabel.textContent='Lengte van dit deel (m)';
   const lengthInput=document.createElement('input');lengthInput.type='number';lengthInput.min='.2';lengthInput.step='.1';lengthInput.value=+r.length.toFixed(2);lengthInput.disabled=i===sections(o).length-1;
   lengthInput.onchange=()=>{
@@ -123,7 +123,7 @@ function renderEditor(){
    };b.append(inp);
    const info=document.createElement('div');info.className='cellInfo';info.textContent=`${(r.length*c.width).toFixed(2)} m²`;
    const splitW=document.createElement('button');splitW.className='secondary smallButton';splitW.textContent='✂ Deel deze breedtemaat';splitW.onclick=()=>splitWidth(i,j);
-   row.append(a,b,info,splitW);group.append(row);
+   row.append(a,b,info,splitW);if(j<r.cols.length-1){const mergeW=document.createElement('button');mergeW.className='secondary smallButton';mergeW.textContent='↔ Samenvoegen met volgend vak';mergeW.onclick=()=>mergeWidth(i,j);row.append(mergeW)}if(selectedCell?.i===i&&selectedCell?.j===j){row.classList.add('selectedCell')}group.append(row);
   });
   $('sections').append(group);
  });
@@ -167,14 +167,14 @@ function updateObj(patch){const o=state.objects.find(x=>x.id===selected);if(!o)r
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
 $('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:(o.rotation+90)%180})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
 function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
-$('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();storeHistory();selected=null;save();syncInputs();paint();updateUndo()};
+$('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();storeHistory();selected=null;selectedCell=null;save();syncInputs();paint();updateUndo()};
 for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});
 function resizeGarden(){const length=Number($('gardenLength').value),width=Number($('gardenWidth').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
 function syncInputs(){$('gardenLength').value=state.length;$('gardenWidth').value=state.width;$('year').value=state.year}
-$('gardenLength').onchange=resizeGarden;$('gardenWidth').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;save();paint()};
+$('gardenLength').onchange=resizeGarden;$('gardenWidth').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};
 const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clientX;p.y=evt.clientY;const matrix=svg.getScreenCTM();if(!matrix)return null;const q=p.matrixTransform(matrix.inverse());return{x:q.x-1,y:q.y-1}}
-svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const o=state.objects.find(x=>x.id===id);const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{if(!drag)return;const p=point(e);const o=state.objects.find(x=>x.id===drag.id);if(!p||!o)return;const dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.abs(dx)+Math.abs(dy)>.08)drag.moved=true;const nx=Math.round((drag.x+dx)*10)/10,ny=Math.round((drag.y+dy)*10)/10;const test={...o,x:nx,y:ny};if(fits(test)){o.x=nx;o.y=ny;paint()}});function endDrag(){if(!drag)return;if(drag.moved){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{if(!drag)return;const p=point(e);const o=state.objects.find(x=>x.id===drag.id);if(!p||!o)return;const dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.abs(dx)+Math.abs(dy)>.08)drag.moved=true;const nx=Math.round((drag.x+dx)*10)/10,ny=Math.round((drag.y+dy)*10)/10;const test={...o,x:nx,y:ny};if(fits(test)){o.x=nx;o.y=ny;paint()}});function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-$('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;selected=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
-$('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;save();syncInputs();paint()};
+$('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
+$('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};
 syncInputs();paint();applyZoom();updateUndo();

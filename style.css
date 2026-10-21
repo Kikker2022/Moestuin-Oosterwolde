@@ -11,3 +11,6 @@
 .zoomBar button{padding:7px 12px;min-height:36px}
 .map-outer{overflow:auto;max-height:72vh;touch-action:auto;overscroll-behavior:contain}
 #map{width:100%;max-height:none;min-height:0;height:auto;aspect-ratio:13 / 32;touch-action:none;flex:none}
+
+/* Versie 1.5: samenvoegknoppen en overzichtelijker bewerken */
+.sectionHeading .smallButton{flex:0 1 auto}.sectionRow .smallButton{white-space:normal;text-align:center}.sectionGroup{border-color:#abc8ad}

@@ -3,3 +3,11 @@
 .totals{margin-top:12px;padding:11px;background:#f0f7ec;border-radius:9px;font-size:.86rem;line-height:1.5}.legend{display:flex;flex-wrap:wrap;gap:8px}.legendItem{display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border-radius:9px;background:#f2f6ef;font-size:.82rem}.legendItem i{display:inline-block;width:15px;height:15px;border-radius:4px;border:1px solid #9995}
 
 .sectionGroup{background:#f3f7f1;border:1px solid #d7e4d7;border-radius:10px;padding:10px;margin:12px 0}.sectionHeading{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}.sectionGroup>.sectionRow{background:#fff;grid-template-columns:minmax(110px,1fr) minmax(90px,1fr) auto;align-items:end}.sectionRow .smallButton{grid-column:1/-1;justify-self:start}.smallButton{font-size:.8rem;padding:7px 10px;min-height:34px}.cellInfo{font-size:.8rem;white-space:nowrap;padding-bottom:10px}@media(max-width:420px){.sectionGroup>.sectionRow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cellInfo{grid-column:1/-1;padding-bottom:0}}
+
+/* Versie 1.4: zoombare plattegrond met tweerichtings-scroll */
+.zoomBar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 6px}
+.zoomBar label{flex:0 0 100%;display:flex;justify-content:space-between}
+.zoomBar input{flex:1 1 160px;min-width:90px;margin:0;accent-color:#2d6547}
+.zoomBar button{padding:7px 12px;min-height:36px}
+.map-outer{overflow:auto;max-height:72vh;touch-action:auto;overscroll-behavior:contain}
+#map{width:100%;max-height:none;min-height:0;height:auto;aspect-ratio:13 / 32;touch-action:none;flex:none}

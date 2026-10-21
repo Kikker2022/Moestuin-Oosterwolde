@@ -14,3 +14,6 @@
 
 /* Versie 1.5: samenvoegknoppen en overzichtelijker bewerken */
 .sectionHeading .smallButton{flex:0 1 auto}.sectionRow .smallButton{white-space:normal;text-align:center}.sectionGroup{border-color:#abc8ad}
+
+/* Geselecteerd deel */
+.selectedCell{outline:2px solid #e4a34a;outline-offset:1px}

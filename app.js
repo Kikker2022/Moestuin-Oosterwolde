@@ -8,6 +8,12 @@ const clone=v=>JSON.parse(JSON.stringify(v));
 const initial=()=>({length:30,width:11,year:'2026',nextId:1,layout:'AB-30x5',objects:[]});
 let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial();if(!Array.isArray(state.objects)||!state.length||!state.width)throw Error()}catch{state=initial()}
 let selected=null,history=[],drag=null;
+let mapZoom=100;
+function applyZoom(){const map=$('map');map.style.width=mapZoom+'%';$('mapZoom').value=mapZoom;$('zoomValue').textContent=mapZoom+'%'}
+$('mapZoom').addEventListener('input',e=>{mapZoom=Number(e.target.value);applyZoom()});
+$('zoomOut').onclick=()=>{mapZoom=Math.max(50,mapZoom-25);applyZoom()};
+$('zoomReset').onclick=()=>{mapZoom=100;applyZoom();$('mapOuter').scrollTo(0,0)};
+$('zoomIn').onclick=()=>{mapZoom=Math.min(400,mapZoom+25);applyZoom()};
 const visible=o=>o.type==='path'||!o.year||o.year===state.year;
 const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Opgeslagen'}catch{$('status').textContent='Opslag niet beschikbaar'}}
@@ -48,7 +54,7 @@ activeObjects().forEach(o=>{
     const y=o.rotation%180===0?along:across;
     const w=o.rotation%180===0?col.width:row.length;
     const h=o.rotation%180===0?row.length:col.width;
-    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:'#fff','stroke-width':'.035'},g);
+    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:'#385b39','stroke-width':'.065'},g);
     if(Math.min(w,h)>.35){
      const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':Math.min(.34,Math.max(.15,Math.min(w,h)*.3)),fill:'#233a2a','pointer-events':'none'},g);
      t.textContent=(col.crop?String(col.crop).padStart(2,'0')+' · ':'')+crop[0];
@@ -85,7 +91,7 @@ function renderEditor(){
   const group=document.createElement('div');group.className='sectionGroup';
   const heading=document.createElement('div');heading.className='sectionHeading';
   const title=document.createElement('strong');title.textContent=`Lengtedeel ${i+1} · ${r.length.toFixed(2)} m`;
-  const splitL=document.createElement('button');splitL.className='secondary smallButton';splitL.textContent='✂ Dwars splitsen';
+  const splitL=document.createElement('button');splitL.className='secondary smallButton';splitL.textContent='✂ Deel deze lengtemaat';
   splitL.onclick=()=>splitLength(i);
   heading.append(title,splitL);group.append(heading);
   const lengthLabel=document.createElement('label');lengthLabel.textContent='Lengte van dit deel (m)';
@@ -111,7 +117,7 @@ function renderEditor(){
     checkpoint();next.width-=v-c.width;c.width=v;save();paint();
    };b.append(inp);
    const info=document.createElement('div');info.className='cellInfo';info.textContent=`${(r.length*c.width).toFixed(2)} m²`;
-   const splitW=document.createElement('button');splitW.className='secondary smallButton';splitW.textContent='✂ In lengte splitsen';splitW.onclick=()=>splitWidth(i,j);
+   const splitW=document.createElement('button');splitW.className='secondary smallButton';splitW.textContent='✂ Deel deze breedtemaat';splitW.onclick=()=>splitWidth(i,j);
    row.append(a,b,info,splitW);group.append(row);
   });
   $('sections').append(group);
@@ -131,7 +137,9 @@ function splitWidth(i=0,j=0){
 }
 function updateObj(patch){const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
-$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:(o.rotation+90)%180})};$('split').onclick=()=>splitLength(0);if($('splitWidth'))$('splitWidth').onclick=()=>splitWidth(0,0);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();selected=null;save();paint();$('undo').disabled=!history.length};
+$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:(o.rotation+90)%180})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
+function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
+$('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();selected=null;save();paint();$('undo').disabled=!history.length};
 for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});
 function resizeGarden(){const length=Number($('gardenLength').value),width=Number($('gardenWidth').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
 function syncInputs(){$('gardenLength').value=state.length;$('gardenWidth').value=state.width;$('year').value=state.year}
@@ -141,4 +149,4 @@ svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;selected=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;save();syncInputs();paint()};
-syncInputs();paint();$('undo').disabled=true;
+syncInputs();paint();applyZoom();$('undo').disabled=true;

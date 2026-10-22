@@ -46,7 +46,7 @@ if(state.layout==='AB-30x5'){
 activeObjects().forEach(o=>{
  const g=add('g',{'data-id':o.id,transform:`translate(${pad+o.x} ${pad+o.y})`});
  const d=dims(o),active=selected===o.id;
- add('rect',{x:0,y:0,width:d.w,height:d.h,rx:.08,fill:o.type==='path'?'#eee8d8':'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.085:.03},g);
+ add('rect',{x:0,y:0,width:d.w,height:d.h,rx:.08,fill:o.type==='path'?'#eee8d8':'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.028:.012},g);
  if(o.type==='path'){
   add('line',{x1:d.w/2,y1:.08,x2:d.w/2,y2:d.h-.08,stroke:'#b9b29f','stroke-width':'.045','stroke-dasharray':'.18 .16'},g);
  }else{
@@ -59,18 +59,18 @@ activeObjects().forEach(o=>{
     const y=o.rotation%180===0?along:across;
     const w=o.rotation%180===0?col.width:row.length;
     const h=o.rotation%180===0?row.length:col.width;
-    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.085':'.028','data-row':i,'data-col':j},g);
+    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},g);
     if(Math.min(w,h)>.35){
-     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':Math.min(.34,Math.max(.15,Math.min(w,h)*.3)),fill:'#233a2a','pointer-events':'none'},g);
-     t.textContent=(col.crop?String(col.crop).padStart(2,'0')+' · ':'')+crop[0];
+     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':Math.min(.25,Math.max(.12,Math.min(w,h)*.23)),'font-weight':'400',fill:'#233a2a','pointer-events':'none'},g);
+     t.textContent=Math.min(w,h)<1.1?crop[0]:(col.crop?String(col.crop).padStart(2,'0')+' · ':'')+crop[0];
     }
     across+=col.width;
    });
    along+=row.length;
   });
-  add('rect',{x:0,y:0,width:d.w,height:d.h,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.085:.025},g);
+  add('rect',{x:0,y:0,width:d.w,height:d.h,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.028:.012},g);
  }
- const t=add('text',{x:.1,y:.27,'font-size':'.26','font-weight':'bold',fill:'#1f432b','pointer-events':'none'},g);
+ const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},g);
  t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
 });
 $('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals()}

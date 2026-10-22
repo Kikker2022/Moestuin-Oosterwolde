@@ -82,7 +82,7 @@ activeObjects().forEach(o=>{
     add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},g);
     // Versie 1.6.1: toon de volledige groentenaam, passend binnen het vak.
     // Kleine vakjes houden hun kleur; de naam blijft via de editor beschikbaar.
-    const name=varietyLabel(col);
+    const name=crop[0];
     const fontSize=Math.min(.36,h*.48,(w*.88)/(Math.max(name.length,1)*.59));
     if(fontSize>=.105 && h>=.24 && w>=.3){
      const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'600',fill:'#193b28','pointer-events':'none'},g);
@@ -97,7 +97,7 @@ activeObjects().forEach(o=>{
  const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},g);
  t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
 });
-$('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals();renderLibrary()}
+$('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals();renderLibrary();renderRegister()}
 function renderTotals(){
  const sums=new Map();let used=0;
  activeObjects().filter(o=>o.type==='bed').forEach(o=>sections(o).forEach(r=>r.cols.forEach(c=>{
@@ -171,20 +171,21 @@ function renderVarietyEditor(c,i,j){
   const del=document.createElement('button');del.className='danger smallButton';del.textContent='Verwijder ras';del.onclick=()=>{if(!confirm('Dit ras uit dit vak verwijderen?'))return;checkpoint();c.varieties.splice(k,1);save();paint()};top.append(name,del);item.append(top);
   const fields=document.createElement('div');fields.className='varietyFields';
   const draft={...v};
-  const specs=[['shop','Gekocht bij','text'],['price','Prijs (€)','number'],['amount','Hoeveelheid / verpakking','text'],['planting','Zaai- of pootdatum','date'],['harvest','Oogstdatum','date'],['rating','Beoordeling (1–5)','select'],['notes','Oogstresultaat / opmerkingen','text']];
+  const specs=[['shop','Gekocht bij','text'],['price','Prijs (€)','number'],['amount','Hoeveelheid / verpakking','text'],['month','Tuinmaand','month'],['planting','Zaai- of pootdatum','date'],['harvest','Oogstdatum','date'],['rating','Beoordeling (1–5)','select'],['notes','Oogstresultaat / opmerkingen','text']];
   specs.forEach(([key,label,type])=>{const lab=document.createElement('label');lab.textContent=label;let inp;
-   if(type==='select'){inp=document.createElement('select');[['','Nog niet beoordeeld'],['1','1 ster'],['2','2 sterren'],['3','3 sterren'],['4','4 sterren'],['5','5 sterren']].forEach(([value,title])=>{const o=document.createElement('option');o.value=value;o.textContent=title;inp.append(o)})}
+   if(type==='month'){inp=document.createElement('select');[['','Niet ingevuld'],...monthNames.map((m,i)=>[String(i+1),m])].forEach(([value,title])=>{const o=document.createElement('option');o.value=value;o.textContent=title;inp.append(o)})}
+    else if(type==='select'){inp=document.createElement('select');[['','Nog niet beoordeeld'],['1','1 ster'],['2','2 sterren'],['3','3 sterren'],['4','4 sterren'],['5','5 sterren']].forEach(([value,title])=>{const o=document.createElement('option');o.value=value;o.textContent=title;inp.append(o)})}
    else {inp=document.createElement('input');inp.type=type;if(type==='number'){inp.min='0';inp.step='.01'}}
    inp.value=v[key]??'';inp.oninput=()=>{draft[key]=inp.value;status.textContent='Nog niet opgeslagen'};inp.onchange=()=>{draft[key]=inp.value;status.textContent='Nog niet opgeslagen'};lab.append(inp);fields.append(lab)
   });
   const repeat=document.createElement('label');repeat.className='varietyRepeat';const check=document.createElement('input');check.type='checkbox';check.checked=!!v.repeat;check.onchange=()=>{draft.repeat=check.checked;status.textContent='Nog niet opgeslagen'};repeat.append(check,document.createTextNode(' Volgend jaar opnieuw kopen / telen'));fields.append(repeat);
   const status=document.createElement('span');status.className='saveHint';status.textContent='Opgeslagen gegevens';
-  const saveButton=document.createElement('button');saveButton.type='button';saveButton.textContent='✓ Teeltgegevens opslaan';saveButton.onclick=()=>{if(draft.price!==''&&(!Number.isFinite(Number(draft.price))||Number(draft.price)<0)){status.textContent='Vul een geldige prijs in';return}checkpoint();Object.assign(v,draft);save();renderLibrary();status.textContent='✓ Opgeslagen (ook online bij verbinding)'};
+  const saveButton=document.createElement('button');saveButton.type='button';saveButton.textContent='✓ Teeltgegevens opslaan';saveButton.onclick=()=>{if(draft.price!==''&&(!Number.isFinite(Number(draft.price))||Number(draft.price)<0)){status.textContent='Vul een geldige prijs in';return}checkpoint();Object.assign(v,draft);save();renderLibrary();renderRegister();status.textContent='✓ Opgeslagen (ook online bij verbinding)'};
   const saveBar=document.createElement('div');saveBar.className='toolbar';saveBar.append(saveButton,status);item.append(fields,saveBar);wrap.append(item)
  });
  return wrap;
 }
-function newVariety(crop,name){return {crop,name,shop:'',price:'',amount:'',planting:'',harvest:'',rating:'',repeat:false,notes:''}}
+function newVariety(crop,name){return {crop,name,shop:'',price:'',amount:'',planting:'',harvest:'',rating:'',month:'',repeat:false,notes:''}}
 function addVariety(c,name){checkpoint();c.varieties??=[];c.varieties.push(newVariety(c.crop,name));save();paint()}
 function renderLibrary(){
  const root=$('varietyLibrary');if(!root)return;root.replaceChildren();ensureLibrary();
@@ -247,6 +248,64 @@ svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};
+
+// Versie 1.7.2: overzicht van alle teeltgegevens, onafhankelijk van de geselecteerde strook.
+const monthNames=['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+let registerEditKey=null;
+function registerEntries(){
+ const entries=[];
+ state.objects.filter(o=>o.type==='bed').forEach(o=>Object.entries(o.sections||{}).forEach(([year,rows])=>{
+  rows.forEach((r,i)=>(r.cols||[]).forEach((cell,j)=>cellVarieties(cell).forEach((v,k)=>entries.push({o,year,i,j,k,cell,v,key:`${o.id}/${year}/${i}/${j}/${k}`}))));
+ }));
+ return entries;
+}
+function renderRegister(){
+ const root=$('registerList');if(!root)return;
+ const year=$('registerYear').value,month=$('registerMonth').value,search=$('registerSearch').value.trim().toLocaleLowerCase('nl');
+ root.replaceChildren();
+ const entries=registerEntries().filter(e=>{
+  if(year!=='all'&&e.year!==year)return false;
+  if(month!=='all'){
+   const matchingDates=[e.v.planting,e.v.harvest].some(d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')&&Number(d.slice(5,7))===Number(month));
+   if(String(e.v.month||'')!==month&&!matchingDates)return false;
+  }
+  const hay=[crops[e.cell.crop]?.[0],e.v.name,e.v.shop,e.v.notes].join(' ').toLocaleLowerCase('nl');
+  return !search||hay.includes(search);
+ });
+ if(!entries.length){const p=document.createElement('p');p.className='hint';p.textContent='Geen teeltgegevens gevonden voor deze selectie.';root.append(p);return}
+ const summary=document.createElement('p');summary.className='hint';summary.textContent=`${entries.length} registratie(s) gevonden`;root.append(summary);
+ entries.forEach(e=>{
+  const card=document.createElement('div');card.className='registerCard';
+  const head=document.createElement('div');head.className='line';
+  const title=document.createElement('strong');title.textContent=`${e.year} · ${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} · vak ${e.i+1}.${e.j+1} · ${crops[e.cell.crop]?.[0]||'?'} — ${e.v.name}`;
+  const edit=document.createElement('button');edit.className='secondary smallButton';edit.type='button';edit.textContent=registerEditKey===e.key?'Sluiten':'✎ Bewerken';edit.onclick=()=>{registerEditKey=registerEditKey===e.key?null:e.key;renderRegister()};
+  head.append(title,edit);card.append(head);
+  const info=document.createElement('p');info.className='registerInfo';info.textContent=[e.v.shop&&`Winkel: ${e.v.shop}`,e.v.price!==''&&e.v.price!=null&&`Prijs: € ${e.v.price}`,e.v.month&&`Tuinmaand: ${monthNames[Number(e.v.month)-1]||e.v.month}`,e.v.planting&&`Gezaaid/gepoot: ${e.v.planting}`,e.v.harvest&&`Oogst: ${e.v.harvest}`,e.v.rating&&`Beoordeling: ${e.v.rating}/5`,e.v.repeat&&'Volgend jaar opnieuw'].filter(Boolean).join(' · ')||'Nog geen aanvullende gegevens';card.append(info);
+  if(registerEditKey===e.key){
+   const draft={...e.v};const fields=document.createElement('div');fields.className='varietyFields';
+   const spec=[['name','Ras','text'],['shop','Gekocht bij','text'],['price','Prijs (€)','number'],['amount','Hoeveelheid / verpakking','text'],['month','Tuinmaand','month'],['planting','Zaai- of pootdatum','date'],['harvest','Oogstdatum','date'],['rating','Beoordeling (1–5)','rating'],['notes','Oogstresultaat / opmerkingen','text']];
+   spec.forEach(([key,label,type])=>{
+    const lab=document.createElement('label');lab.textContent=label;let inp;
+    if(type==='month'||type==='rating'){
+     inp=document.createElement('select');const options=type==='month'?[['','Niet ingevuld'],...monthNames.map((m,i)=>[String(i+1),m])]:[['','Nog niet beoordeeld'],...[1,2,3,4,5].map(n=>[String(n),n+' sterren'])];
+     options.forEach(([value,text])=>{const opt=document.createElement('option');opt.value=value;opt.textContent=text;inp.append(opt)});
+    }else{inp=document.createElement('input');inp.type=type;if(type==='number'){inp.min='0';inp.step='.01'}}
+    inp.value=draft[key]??'';inp.oninput=()=>{draft[key]=inp.value};inp.onchange=()=>{draft[key]=inp.value};lab.append(inp);fields.append(lab);
+   });
+   const repeat=document.createElement('label');repeat.className='varietyRepeat';const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!draft.repeat;cb.onchange=()=>{draft.repeat=cb.checked};repeat.append(cb,document.createTextNode(' Volgend jaar opnieuw kopen / telen'));fields.append(repeat);
+   const saveButton=document.createElement('button');saveButton.type='button';saveButton.textContent='✓ Wijzigingen opslaan';saveButton.onclick=()=>{
+    if(!draft.name?.trim()){alert('Vul een rasnaam in.');return}
+    if(draft.price!==''&&(!Number.isFinite(Number(draft.price))||Number(draft.price)<0)){alert('Vul een geldige prijs in.');return}
+    checkpoint();Object.assign(e.v,draft,{name:draft.name.trim()});save();registerEditKey=null;paint();notify('✓ Teeltgegevens gewijzigd en opgeslagen');
+   };
+   card.append(fields,saveButton);
+  }
+  root.append(card);
+ });
+}
+['registerYear','registerMonth','registerSearch'].forEach(id=>$(id).addEventListener(id==='registerSearch'?'input':'change',()=>{registerEditKey=null;renderRegister()}));
+$('registerYear').value=state.year;
+
 syncInputs();paint();applyZoom();updateUndo();
 
 // Veilige toegang voor Firebase: externe synchronisatie kan alleen via deze twee functies.

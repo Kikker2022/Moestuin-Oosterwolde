@@ -22,3 +22,6 @@
 .selectedCell{outline-width:1px}
 
 /* Versie 1.5.3: dunne SVG-randen en lichtere gewaslabels worden in app.js getekend. */
+
+/* Versie 1.6: account en synchronisatie */
+#cloudStatus{font-size:.9rem;color:#25563b;background:#f0f7ec;padding:10px;border-radius:9px;line-height:1.5}#cloudChoices{border-top:1px solid #d7e4d7;margin-top:12px;padding-top:8px}#cloudEmail{overflow-wrap:anywhere}

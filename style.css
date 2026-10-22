@@ -33,3 +33,13 @@
 
 /* 1.7.1: per geselecteerd vak teeltgegevens en expliciet opslaan */
 .varietyEditor{border:2px solid #8db99b;background:#f7fbf5;border-radius:12px;padding:13px;margin:10px 0 18px}.saveHint{font-size:.85rem;color:#316544;align-self:center}.varietyCard{border:1px solid #d7e4d7;background:white;border-radius:10px;padding:12px;margin-top:12px}
+
+/* Versie 1.7.2: extra duidelijke selectie en bewerkbaar teeltregister */
+.varietyEditor{border:3px solid #276342;background:#eff8ee;box-shadow:0 0 0 3px #cce6cf;border-radius:13px;padding:14px}
+.selectedCell{outline:3px solid #ce8c21;outline-offset:2px}
+.registerFilters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.registerCard{border:1px solid #b9d0bd;border-left:5px solid #2d6547;background:#f9fcf8;border-radius:10px;padding:12px;margin:11px 0}
+.registerCard .line{align-items:flex-start}.registerCard .line strong{flex:1;line-height:1.5}
+.registerInfo{font-size:.87rem;color:#4d6653;line-height:1.6;margin:8px 0}
+.registerCard>.varietyFields{margin:14px 0}
+@media(max-width:600px){.registerFilters{grid-template-columns:1fr 1fr}.registerFilters label:last-child{grid-column:1/-1}}

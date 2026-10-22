@@ -60,9 +60,13 @@ activeObjects().forEach(o=>{
     const w=o.rotation%180===0?col.width:row.length;
     const h=o.rotation%180===0?row.length:col.width;
     add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},g);
-    if(Math.min(w,h)>.35){
-     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':Math.min(.25,Math.max(.12,Math.min(w,h)*.23)),'font-weight':'400',fill:'#233a2a','pointer-events':'none'},g);
-     t.textContent=Math.min(w,h)<1.1?crop[0]:(col.crop?String(col.crop).padStart(2,'0')+' · ':'')+crop[0];
+    // Versie 1.6.1: toon de volledige groentenaam, passend binnen het vak.
+    // Kleine vakjes houden hun kleur; de naam blijft via de editor beschikbaar.
+    const name=crop[0];
+    const fontSize=Math.min(.36,h*.48,(w*.88)/(Math.max(name.length,1)*.59));
+    if(fontSize>=.105 && h>=.24 && w>=.3){
+     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'600',fill:'#193b28','pointer-events':'none'},g);
+     t.textContent=name;
     }
     across+=col.width;
    });

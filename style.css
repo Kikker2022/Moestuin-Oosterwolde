@@ -20,3 +20,5 @@
 
 /* Versie 1.5.2: geselecteerd vak ook in de editor subtieler omlijnd */
 .selectedCell{outline-width:1px}
+
+/* Versie 1.5.3: dunne SVG-randen en lichtere gewaslabels worden in app.js getekend. */

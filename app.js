@@ -21,7 +21,7 @@ $('zoomReset').onclick=()=>{mapZoom=100;applyZoom();$('mapOuter').scrollTo(0,0)}
 $('zoomIn').onclick=()=>{mapZoom=Math.min(400,mapZoom+25);applyZoom()};
 const visible=o=>o.type==='path'||!o.year||o.year===state.year;
 const activeObjects=()=>state.objects.filter(visible);
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Opgeslagen'}catch{$('status').textContent='Opslag niet beschikbaar'}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
 function checkpoint(){history.push(clone(state));if(history.length>40)history.shift();storeHistory();updateUndo()}
 function notify(s){$('status').textContent=s;setTimeout(()=>{if($('status').textContent===s)$('status').textContent='✓ Opgeslagen'},2600)}
 function dims(o){return o.rotation%180===0?{w:o.width,h:o.length}:{w:o.length,h:o.width}}
@@ -178,3 +178,75 @@ $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{typ
 $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};
 syncInputs();paint();applyZoom();updateUndo();
+
+// Veilige toegang voor Firebase: externe synchronisatie kan alleen via deze twee functies.
+window.gardenGetState=()=>clone(state);
+window.gardenReceiveCloud=function(incoming){
+ if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig online tuinplan');
+ checkpoint();state=clone(incoming);selected=null;selectedCell=null;
+ localStorage.setItem(KEY,JSON.stringify(state));syncInputs();paint();updateUndo();
+};
+
+// Mijn Slimme Moestuin 1.6 - Firebase synchronisatie
+(function(){
+ const cfg={apiKey:'AIzaSyCWWZakMN0G-r3qbpVcaFscxfeo8AxxXOc',authDomain:'mijn-slimme-moestuin.firebaseapp.com',databaseURL:'https://mijn-slimme-moestuin-default-rtdb.europe-west1.firebasedatabase.app',projectId:'mijn-slimme-moestuin',storageBucket:'mijn-slimme-moestuin.firebasestorage.app',messagingSenderId:'97908641307',appId:'1:97908641307:web:3f59158e8f1c0c84a832be'};
+ const $=id=>document.getElementById(id);
+ const say=s=>{$('cloudStatus').textContent=s};
+ if(!window.firebase){say('Firebase kon niet worden geladen. Controleer je internetverbinding.');return}
+ let auth,db,ref,unsubscribe=null,connected=false,writing=false,pending=null,writeQueue=Promise.resolve(),lastRemote=null;
+ try{firebase.initializeApp(cfg);auth=firebase.auth();db=firebase.database()}catch(e){say('Firebase initialisatie mislukt: '+e.message);return}
+ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+ const valid=s=>s&&Array.isArray(s.objects)&&Number.isFinite(s.length)&&Number.isFinite(s.width)&&['2026','2027'].includes(s.year)&&Number.isInteger(s.nextId);
+ function resetConnection(){if(unsubscribe&&ref){ref.off('value',unsubscribe);unsubscribe=null}connected=false;ref=null;pending=null;lastRemote=null;$('cloudChoices').hidden=true;$('cloudConnect').hidden=true}
+ function setSignedIn(user){$('cloudLogin').hidden=!!user;$('cloudAccount').hidden=!user;$('cloudEmail').textContent=user?user.email:'';resetConnection();if(user){$('cloudConnect').hidden=false;say('Ingelogd. Kies Verbinden om tuinplannen te vergelijken.')}else say('Niet ingelogd. Je tuinplan blijft lokaal bewaard.')}
+ auth.onAuthStateChanged(setSignedIn,e=>say('Inlogcontrole mislukt: '+e.message));
+ $('cloudSignIn').onclick=async()=>{const email=$('cloudUser').value.trim(),pass=$('cloudPassword').value;if(!email||!pass){say('Vul e-mailadres en wachtwoord in.');return}try{say('Bezig met inloggen…');await auth.signInWithEmailAndPassword(email,pass);$('cloudPassword').value=''}catch(e){say('Inloggen mislukt: '+e.message)}};
+ $('cloudSignOut').onclick=async()=>{try{resetConnection();await auth.signOut()}catch(e){say('Uitloggen mislukt: '+e.message)}};
+ function listen(){
+   if(unsubscribe)unsubscribe();connected=true;$('cloudChoices').hidden=true;$('cloudConnect').hidden=true;
+   unsubscribe=ref.on('value',snap=>{
+     const record=snap.val();if(!record||!valid(record.plan))return;
+     const remote=record.plan;lastRemote=remote;
+     if(writing||pending)return;
+     if(!same(remote,window.gardenGetState())){try{window.gardenReceiveCloud(remote);say('✓ Tuinplan bijgewerkt vanaf een ander apparaat.')}catch(e){say('Online gegevens konden niet worden geopend: '+e.message)}}
+   },e=>say('Luisteren mislukt: '+e.message));
+   say('✓ Verbonden. Wijzigingen worden automatisch gesynchroniseerd.');
+ }
+ async function uploadFirst(){
+  if(!ref)return;
+  if(!$('cloudUseOnline').hidden && !confirm('Het online tuinplan wordt vervangen door dat van dit apparaat. Heb je van beide een back-up?'))return;
+  try{say('Tuinplan veilig naar Firebase sturen…');const plan=window.gardenGetState();
+   const result=await ref.transaction(current=>{
+     if(current && valid(current.plan) && $('cloudUseOnline').hidden)return;
+     return {plan,updatedAt:firebase.database.ServerValue.TIMESTAMP};
+   },undefined,false);
+   if(!result.committed){say('Er staat inmiddels een tuinplan online. Vergelijk de plannen opnieuw.');$('cloudConnect').hidden=false;return}
+   lastRemote=plan;listen()
+  }catch(e){say('Upload mislukt: '+e.message)}
+ }
+ $('cloudConnect').onclick=async()=>{
+   const user=auth.currentUser;if(!user){say('Log eerst in.');return}
+   ref=db.ref('tuinplannen/'+user.uid);$('cloudUseOnline').hidden=false;say('Online tuinplan controleren…');
+   try{const snap=await ref.once('value');const rec=snap.val();
+     if(rec&&valid(rec.plan)){
+       if(same(rec.plan,window.gardenGetState())){lastRemote=rec.plan;listen();return}
+       $('cloudChoices').hidden=false;say('Er staat al een ander tuinplan online. Kies welk plan je wilt gebruiken.');
+     }else{$('cloudChoices').hidden=false;$('cloudUseOnline').hidden=true;say('Online staat nog geen tuinplan. Kies “Dit apparaat online zetten”.')}
+   }catch(e){say('Online controleren mislukt: '+e.message)}
+ };
+ $('cloudUseLocal').onclick=uploadFirst;
+ $('cloudUseOnline').onclick=async()=>{
+   try{const snap=await ref.once('value');const rec=snap.val();if(!rec||!valid(rec.plan))throw Error('Geen geldig online plan');
+     if(!confirm('Het tuinplan op dit apparaat vervangen door het online tuinplan? Maak eerst een JSON-back-up van dit apparaat.'))return;
+     window.gardenReceiveCloud(rec.plan);lastRemote=rec.plan;listen();
+   }catch(e){say('Online plan openen mislukt: '+e.message)}
+ };
+ window.gardenCloudChanged=plan=>{
+   if(!connected||!ref)return;
+   pending=plan;writing=true;
+   writeQueue=writeQueue.then(async()=>{
+     while(pending){const next=pending;pending=null;await ref.set({plan:next,updatedAt:firebase.database.ServerValue.TIMESTAMP});lastRemote=next}
+     writing=false;say('✓ Lokaal en online opgeslagen.');
+   }).catch(e=>{writing=false;connected=false;if(unsubscribe){ref.off('value',unsubscribe);unsubscribe=null} $('cloudConnect').hidden=false;say('Online opslaan mislukt: '+e.message+'. Lokaal is wel opgeslagen. Verbind opnieuw.')});
+ };
+})();

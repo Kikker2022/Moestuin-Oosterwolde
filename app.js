@@ -2,6 +2,26 @@
 const KEY='mijn-slimme-moestuin-v1';
 // Geen automatische opslag bij het openen: beschermt bestaande tuinplannen.
 const crops=[['Leeg','#d5d8c9'],['Aardappel','#a9c984'],['Wortel','#edc27b'],['Ui','#b9c7ec'],['Bonen','#9ed2af'],['Kool','#d8a6bb'],['Sla','#b6db86'],['Prei','#a4c9d4'],['Biet','#d6a0a0'],['Spinazie','#7ebf8e']];
+// Versie 1.7: voorbeeldrassen; eigen rassen worden in het tuinplan opgeslagen.
+const knownVarieties={
+  1:['Annabelle','Frieslander','Agria','Bildtstar','Doré','Eigenheimer','Nicola','Charlotte','Bintje'],
+  2:['Nantes 2','Amsterdamse Bak','Berlikumer','Flakkee 2','Parijse Markt'],
+  3:['Sturon','Stuttgarter Riesen','Red Baron','Rijnsburger'],
+  4:['Stamslaboon Prelude','Dubbele Witte','Neckarkönigin','Helda'],
+  5:['Bloemkool Alpha','Boerenkool Westlandse Winter','Spitskool Caraflex','Broccoli Calabrese'],
+  6:['Kropsla Meikoningin','Lollo Rossa','Little Gem','Eikenbladsla'],
+  7:['Blauwgroene Herfst','Herfstreuzen 2','Bulgaarse Reuzen'],
+  8:['Detroit 2','Egyptische Platronde','Chioggia','Cylindra'],
+  9:['Winterreuzen','Matador','Viroflay']
+};
+const extraCrops=['Tomaat','Komkommer','Courgette','Pompoen','Paprika','Peper','Radijs','Pastinaak','Knolselderij','Bleekselderij','Venkel','Erwt','Peultjes','Tuinboon','Mais','Rucola','Andijvie','Snijbiet','Aardbei','Framboos','Braam','Blauwe bes','Rode bes','Zwarte bes','Druif','Rabarber','Appel','Peer','Kers','Pruim','Kruiden'];
+extraCrops.forEach((name,i)=>crops.push([name,['#c3dda6','#e7c7a5','#b4d8bd','#d4c7e5','#efd59a'][i%5]]));
+const cropNames=()=>crops.map((c,i)=>({id:i,name:c[0]})).filter(c=>c.id>0);
+const cellVarieties=c=>Array.isArray(c.varieties)?c.varieties:[];
+const varietyLabel=c=>{const v=cellVarieties(c);return v.length===1?v[0].name:v.length>1?v.length+' rassen':(crops[c.crop]?.[0]||'Leeg')};
+function ensureLibrary(){if(!Array.isArray(state.customVarieties))state.customVarieties=[]}
+function availableVarieties(crop){ensureLibrary();return [...new Set([...(knownVarieties[crop]||[]),...state.customVarieties.filter(v=>v.crop===crop).map(v=>v.name)])].sort((a,b)=>a.localeCompare(b,'nl'))}
+function addCustomVariety(crop,name){ensureLibrary();name=String(name||'').trim();if(!name)return false;if(!state.customVarieties.some(v=>v.crop===crop&&v.name.toLowerCase()===name.toLowerCase()))state.customVarieties.push({crop,name});return true}
 const $=id=>document.getElementById(id);
 const clone=v=>JSON.parse(JSON.stringify(v));
 // Basis: 30 m lang; links 0,5 m pad, A 5 m, B 5 m, rechts 0,5 m pad.
@@ -62,7 +82,7 @@ activeObjects().forEach(o=>{
     add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},g);
     // Versie 1.6.1: toon de volledige groentenaam, passend binnen het vak.
     // Kleine vakjes houden hun kleur; de naam blijft via de editor beschikbaar.
-    const name=crop[0];
+    const name=varietyLabel(col);
     const fontSize=Math.min(.36,h*.48,(w*.88)/(Math.max(name.length,1)*.59));
     if(fontSize>=.105 && h>=.24 && w>=.3){
      const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'600',fill:'#193b28','pointer-events':'none'},g);
@@ -77,7 +97,7 @@ activeObjects().forEach(o=>{
  const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},g);
  t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
 });
-$('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals()}
+$('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals();renderLibrary()}
 function renderTotals(){
  const sums=new Map();let used=0;
  activeObjects().filter(o=>o.type==='bed').forEach(o=>sections(o).forEach(r=>r.cols.forEach(c=>{
@@ -117,7 +137,7 @@ function renderEditor(){
    const select=document.createElement('select');
    crops.forEach(([n],k)=>{const opt=document.createElement('option');opt.value=k;opt.textContent=n;select.append(opt)});
    select.value=c.crop;
-   select.onchange=()=>{checkpoint();c.crop=Number(select.value);save();paint()};a.append(select);
+   select.onchange=()=>{const newCrop=Number(select.value);if(cellVarieties(c).length&&!confirm('De rassenregistraties in dit vak wissen omdat je het gewas verandert?')){paint();return}checkpoint();c.crop=newCrop;c.varieties=[];save();paint()};a.append(select);
    const b=document.createElement('label');b.textContent='Breedte (m)';
    const inp=document.createElement('input');inp.type='number';inp.min='.2';inp.step='.1';inp.value=+c.width.toFixed(2);inp.disabled=j===r.cols.length-1;
    inp.onchange=()=>{
@@ -127,10 +147,51 @@ function renderEditor(){
    };b.append(inp);
    const info=document.createElement('div');info.className='cellInfo';info.textContent=`${(r.length*c.width).toFixed(2)} m²`;
    const splitW=document.createElement('button');splitW.className='secondary smallButton';splitW.textContent='✂ Deel deze breedtemaat';splitW.onclick=()=>splitWidth(i,j);
-   row.append(a,b,info,splitW);if(j<r.cols.length-1){const mergeW=document.createElement('button');mergeW.className='secondary smallButton';mergeW.textContent='↔ Samenvoegen met volgend vak';mergeW.onclick=()=>mergeWidth(i,j);row.append(mergeW)}if(selectedCell?.i===i&&selectedCell?.j===j){row.classList.add('selectedCell')}group.append(row);
+   row.append(a,b,info,splitW);if(j<r.cols.length-1){const mergeW=document.createElement('button');mergeW.className='secondary smallButton';mergeW.textContent='↔ Samenvoegen met volgend vak';mergeW.onclick=()=>mergeWidth(i,j);row.append(mergeW)}if(selectedCell?.i===i&&selectedCell?.j===j){row.classList.add('selectedCell')}group.append(row);group.append(renderVarietyEditor(c,i,j));
   });
   $('sections').append(group);
  });
+}
+function renderVarietyEditor(c,i,j){
+ const wrap=document.createElement('div');wrap.className='varietyEditor';
+ const heading=document.createElement('strong');heading.textContent=`Rassen in vak ${i+1}.${j+1}`;wrap.append(heading);
+ const note=document.createElement('p');note.className='hint';note.textContent='Voeg één of meer rassen toe. Je kunt ze ook over aparte vakken verdelen.';wrap.append(note);
+ if(!c.crop){const msg=document.createElement('p');msg.className='hint';msg.textContent='Kies eerst een gewas hierboven.';wrap.append(msg);return wrap}
+ const pick=document.createElement('select');const first=document.createElement('option');first.value='';first.textContent='Kies een bestaand ras…';pick.append(first);
+ availableVarieties(c.crop).forEach(name=>{const o=document.createElement('option');o.value=name;o.textContent=name;pick.append(o)});
+ const add=document.createElement('button');add.className='secondary smallButton';add.textContent='+ Gekozen ras toevoegen';
+ add.onclick=()=>{if(!pick.value){notify('Kies eerst een ras');return}addVariety(c,pick.value)};
+ const custom=document.createElement('button');custom.className='secondary smallButton';custom.textContent='+ Zelf ras toevoegen';
+ custom.onclick=()=>{const name=prompt('Naam van het nieuwe ras:');if(!name?.trim())return;checkpoint();addCustomVariety(c.crop,name);c.varieties??=[];c.varieties.push(newVariety(c.crop,name.trim()));save();paint()};
+ const actions=document.createElement('div');actions.className='toolbar';actions.append(pick,add,custom);wrap.append(actions);
+ cellVarieties(c).forEach((v,k)=>{
+  const item=document.createElement('div');item.className='varietyCard';
+  const top=document.createElement('div');top.className='line';const name=document.createElement('strong');name.textContent=v.name;
+  const del=document.createElement('button');del.className='danger smallButton';del.textContent='Verwijder ras';del.onclick=()=>{if(!confirm('Dit ras uit dit vak verwijderen?'))return;checkpoint();c.varieties.splice(k,1);save();paint()};top.append(name,del);item.append(top);
+  const fields=document.createElement('div');fields.className='varietyFields';
+  const specs=[['shop','Gekocht bij','text'],['price','Prijs (€)','number'],['amount','Hoeveelheid / verpakking','text'],['planting','Zaai- of pootdatum','date'],['harvest','Oogstdatum','date'],['rating','Beoordeling (1–5)','select'],['notes','Oogstresultaat / opmerkingen','text']];
+  specs.forEach(([key,label,type])=>{const lab=document.createElement('label');lab.textContent=label;let inp;
+   if(type==='select'){inp=document.createElement('select');[['','Nog niet beoordeeld'],['1','1 ster'],['2','2 sterren'],['3','3 sterren'],['4','4 sterren'],['5','5 sterren']].forEach(([value,title])=>{const o=document.createElement('option');o.value=value;o.textContent=title;inp.append(o)})}
+   else {inp=document.createElement('input');inp.type=type;if(type==='number'){inp.min='0';inp.step='.01'}}
+   inp.value=v[key]??'';inp.onchange=()=>{checkpoint();v[key]=inp.value;save();renderLibrary()};lab.append(inp);fields.append(lab)
+  });
+  const repeat=document.createElement('label');repeat.className='varietyRepeat';const check=document.createElement('input');check.type='checkbox';check.checked=!!v.repeat;check.onchange=()=>{checkpoint();v.repeat=check.checked;save();renderLibrary()};repeat.append(check,document.createTextNode(' Volgend jaar opnieuw kopen / telen'));fields.append(repeat);item.append(fields);wrap.append(item)
+ });
+ return wrap;
+}
+function newVariety(crop,name){return {crop,name,shop:'',price:'',amount:'',planting:'',harvest:'',rating:'',repeat:false,notes:''}}
+function addVariety(c,name){checkpoint();c.varieties??=[];c.varieties.push(newVariety(c.crop,name));save();paint()}
+function renderLibrary(){
+ const root=$('varietyLibrary');if(!root)return;root.replaceChildren();ensureLibrary();
+ const summary=document.createElement('p');summary.className='hint';summary.textContent='Kies een gewas in een tuinvlak om een ras te registreren. Je eigen rassen worden bewaard in je tuinplan.';root.append(summary);
+ const cropSelect=document.createElement('select');cropNames().forEach(({id,name})=>{const o=document.createElement('option');o.value=id;o.textContent=name;cropSelect.append(o)});
+ const list=document.createElement('div');list.className='libraryList';
+ const update=()=>{list.replaceChildren();const names=availableVarieties(Number(cropSelect.value));list.textContent=names.length?names.join(' · '):'Nog geen rassen in de lijst. Je kunt zelf een ras toevoegen in een tuinvlak.'};
+ cropSelect.onchange=update;root.append(cropSelect,list);update();
+ const fav=document.createElement('div');fav.className='libraryFavorites';const items=[];
+ state.objects.filter(o=>o.type==='bed').forEach(o=>Object.entries(o.sections||{}).forEach(([year,rows])=>rows.forEach(r=>(r.cols||[]).forEach(c=>cellVarieties(c).forEach(v=>{if(v.repeat)items.push(`${year} · ${crops[v.crop]?.[0]||'?'} – ${v.name}${v.shop?' · '+v.shop:''}${v.price?' · € '+v.price:''}`)})))));
+ const title=document.createElement('h3');title.textContent='Opnieuw kopen of telen';fav.append(title);
+ const p=document.createElement('p');p.textContent=items.length?items.join(' | '):'Nog geen favorieten. Vink bij een ras ‘Volgend jaar opnieuw kopen / telen’ aan.';fav.append(p);root.append(fav)
 }
 function splitLength(i=0){
  const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;
@@ -142,7 +203,7 @@ function splitWidth(i=0,j=0){
  const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;
  const r=sections(o)[i],c=r?.cols[j];if(!c||c.width<.4){notify('Dit vak is te smal om in de lengte te splitsen');return}
  checkpoint();const half=c.width/2;c.width=half;
- r.cols.splice(j+1,0,{crop:0,width:half});save();paint();
+ r.cols.splice(j+1,0,{crop:0,width:half,varieties:[]});save();paint();
 }
 function chooseMergedCrop(first,second){
  const options=crops.map(([name],i)=>i+': '+name).join('\n');
@@ -155,7 +216,7 @@ function mergeWidth(i,j){
  const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;
  const r=sections(o)[i];if(!r||!r.cols[j+1])return;
  const id=chooseMergedCrop(r.cols[j].crop,r.cols[j+1].crop);if(id===null)return;
- checkpoint();r.cols[j].width+=r.cols[j+1].width;r.cols[j].crop=id;r.cols.splice(j+1,1);save();paint();
+ if((cellVarieties(r.cols[j]).length||cellVarieties(r.cols[j+1]).length)&&!confirm('Bij samenvoegen worden de rassen van beide vakken samengevoegd. Doorgaan?'))return;checkpoint();r.cols[j].width+=r.cols[j+1].width;r.cols[j].crop=id;r.cols[j].varieties=[...cellVarieties(r.cols[j]),...cellVarieties(r.cols[j+1])].filter(v=>v.crop===id);r.cols.splice(j+1,1);save();paint();
 }
 function mergeLength(i){
  const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;
@@ -165,7 +226,7 @@ function mergeLength(i){
   notify('Samenvoegen kan alleen bij gelijke breedteverdeling');return;
  }
  const id=chooseMergedCrop(a.cols[0].crop,b.cols[0].crop);if(id===null)return;
- checkpoint();a.length+=b.length;a.cols.forEach(c=>c.crop=id);rows.splice(i+1,1);save();paint();
+ if((a.cols.some(c=>cellVarieties(c).length)||b.cols.some(c=>cellVarieties(c).length))&&!confirm('Rassen uit beide lengtedelen worden samengevoegd voor zover ze bij het gekozen gewas horen. Doorgaan?'))return;checkpoint();a.length+=b.length;a.cols.forEach((c,j)=>{c.varieties=[...cellVarieties(c),...cellVarieties(b.cols[j])].filter(v=>v.crop===id);c.crop=id});rows.splice(i+1,1);save();paint();
 }
 function updateObj(patch){const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}

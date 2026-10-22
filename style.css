@@ -17,3 +17,6 @@
 
 /* Geselecteerd deel */
 .selectedCell{outline:2px solid #e4a34a;outline-offset:1px}
+
+/* Versie 1.5.2: geselecteerd vak ook in de editor subtieler omlijnd */
+.selectedCell{outline-width:1px}

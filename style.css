@@ -61,3 +61,11 @@
 #registerContent[hidden],#catalogTabContent[hidden]{display:none!important}
 .workbookExport{margin:8px 0 12px;background:#2d6547}
 @media(max-width:520px){.mainGreenButton{width:100%}}
+
+/* 1.8.2: compacte knoppen, heldere invoer en selectie */
+.compactFileButton{font-size:.78rem!important;min-height:32px!important;padding:6px 10px!important;min-width:92px!important;width:auto!important;flex:0 0 auto!important;border-radius:7px!important}
+.catalogNewForm{padding:14px;border:2px solid #8dbb95;background:#f2f9f0;border-radius:12px;margin:12px 0}
+.catalogNewForm[hidden]{display:none!important}
+#catalogList .assignButton{background:#2d6547;color:white;margin-left:6px}
+#toggleLegend,#toggleCatalog{width:245px;min-height:46px}
+@media(max-width:520px){#toggleLegend,#toggleCatalog{width:100%}}

@@ -314,7 +314,7 @@ function renderRegister(){
 ['registerYear','registerMonth','registerSearch'].forEach(id=>$(id).addEventListener(id==='registerSearch'?'input':'change',()=>{registerEditKey=null;renderRegister()}));
 $('registerYear').value=state.year;
 $('toggleLegend').onclick=()=>{const content=$('legendContent');content.hidden=!content.hidden;const open=!content.hidden;$('toggleLegend').textContent=open?'✕ Verberg groenten en kleuren':'🎨 Toon groenten en kleuren';$('toggleLegend').setAttribute('aria-expanded',String(open))};
-$('toggleRegister').onclick=()=>{const content=$('registerContent');content.hidden=!content.hidden;$('toggleRegister').textContent=content.hidden?'📋 Open teeltresultaten':'✕ Sluit teeltresultaten';$('toggleRegister').setAttribute('aria-expanded',String(!content.hidden));if(!content.hidden)renderRegister()};
+
 $('exportRegister').onclick=()=>{
  const table=$('registerList').querySelector('table');if(!table){notify('Geen registraties om te exporteren');return}
  const rows=[...table.querySelectorAll('thead tr, tbody tr')].filter(tr=>tr.querySelectorAll('td').length!==1).map(tr=>[...tr.querySelectorAll('th,td')].slice(0,-1).map(c=>c.textContent));
@@ -410,3 +410,37 @@ window.gardenReceiveCloud=function(incoming){
    }).catch(e=>{writing=false;connected=false;if(unsubscribe){ref.off('value',unsubscribe);unsubscribe=null} $('cloudConnect').hidden=false;say('Online opslaan mislukt: '+e.message+'. Lokaal is wel opgeslagen. Verbind opnieuw.')});
  };
 })();
+
+// Versie 1.8.1: aankopen en teeltresultaten achter dezelfde knop.
+function selectRegisterTab(tab){
+ const purchases=tab==='catalog';
+ $('catalogTabContent').hidden=!purchases;
+ $('registerContent').hidden=purchases;
+ $('showCatalogTab').classList.toggle('active',purchases);
+ $('showResultsTab').classList.toggle('active',!purchases);
+ $('showCatalogTab').setAttribute('aria-pressed',String(purchases));
+ $('showResultsTab').setAttribute('aria-pressed',String(!purchases));
+ if(purchases)renderCatalog();else renderRegister();
+}
+$('showCatalogTab').onclick=()=>selectRegisterTab('catalog');
+$('showResultsTab').onclick=()=>selectRegisterTab('results');
+selectRegisterTab('catalog');
+// Een Excel-werkboek met vaste kolomkoppen, filters en afzonderlijke vergelijkbare werkbladen.
+$('exportWorkbook').onclick=()=>{
+ if(typeof XLSX==='undefined'){alert('Excel-export is niet geladen. Controleer je internetverbinding of gebruik voorlopig de CSV-export.');return}
+ ensureCatalog();
+ const wb=XLSX.utils.book_new();
+ const purchaseHead=['ID','Gewas','Ras','Leverancier','Prijs (€)','Hoeveelheid','Aankoopdatum','Opmerkingen'];
+ const purchaseRows=state.catalog.slice().sort((a,b)=>Number(a.crop)-Number(b.crop)||String(a.name).localeCompare(String(b.name),'nl')).map(e=>[e.id,crops[e.crop]?.[0]||'',e.name||'',e.shop||'',e.price||'',e.amount||'',e.purchase||'',e.notes||'']);
+ const purchaseSheet=XLSX.utils.aoa_to_sheet([purchaseHead,...purchaseRows]);
+ purchaseSheet['!autofilter']={ref:`A1:H${Math.max(2,purchaseRows.length+1)}`};
+ purchaseSheet['!cols']=[{wch:9},{wch:20},{wch:28},{wch:23},{wch:14},{wch:20},{wch:17},{wch:40}];
+ XLSX.utils.book_append_sheet(wb,purchaseSheet,'Zaden en aankopen');
+ const resultsHead=['Jaar','Vak','ID aankoop','Gewas','Ras','Tuinmaand','Gezaaid gepoot','Oogst vanaf','Oogst tot','Weersomstandigheden','Leverancier','Prijs (€)','Hoeveelheid','Beoordeling','Opbrengst (kg)','Opmerkingen'];
+ const resultsRows=registerEntries().sort((a,b)=>a.year.localeCompare(b.year)||Number(a.cell.crop)-Number(b.cell.crop)||a.v.name.localeCompare(b.v.name,'nl')).map(e=>[e.year,`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`,e.v.catalogId||'',crops[e.cell.crop]?.[0]||'',e.v.name||'',e.v.month?monthNames[Number(e.v.month)-1]||'':'',e.v.planting||'',harvestStart(e.v),harvestEnd(e.v),e.v.weather||'',e.v.shop||'',e.v.price||'',e.v.amount||'',e.v.rating||'',e.v.yieldKg||'',e.v.notes||'']);
+ const resultsSheet=XLSX.utils.aoa_to_sheet([resultsHead,...resultsRows]);
+ resultsSheet['!autofilter']={ref:`A1:P${Math.max(2,resultsRows.length+1)}`};
+ resultsSheet['!cols']=[{wch:10},{wch:20},{wch:12},{wch:20},{wch:28},{wch:17},{wch:18},{wch:17},{wch:17},{wch:27},{wch:23},{wch:13},{wch:18},{wch:15},{wch:17},{wch:42}];
+ XLSX.utils.book_append_sheet(wb,resultsSheet,'Teeltresultaten');
+ XLSX.writeFile(wb,'mijn-slimme-moestuinregister.xlsx');
+};

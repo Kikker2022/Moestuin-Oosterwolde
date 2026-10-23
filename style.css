@@ -52,3 +52,12 @@
 
 /* 1.8: centraal moestuinregister */
 #catalogContent[hidden]{display:none}.catalogTable{min-width:900px}#catalogPanel .registerFilters{align-items:end}#catalogPanel .registerFilters button{margin-top:5px;width:100%}#catalogPanel .fileButton{background:#2d6547;color:white}#toggleLegend{background:#2d6547;color:white}
+
+/* Versie 1.8.1: een centraal register, twee tabbladen, uniforme groene knoppen */
+.mainGreenButton{background:#2d6547!important;color:#fff!important;width:245px;max-width:100%;min-height:46px;justify-content:center;text-align:center}
+.registerTabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 8px}
+.registerTab{background:#e4efe6;color:#24573c;flex:1 1 170px;border:1px solid #aac7b0}
+.registerTab.active{background:#2d6547;color:#fff}
+#registerContent[hidden],#catalogTabContent[hidden]{display:none!important}
+.workbookExport{margin:8px 0 12px;background:#2d6547}
+@media(max-width:520px){.mainGreenButton{width:100%}}

@@ -43,3 +43,6 @@
 .registerInfo{font-size:.87rem;color:#4d6653;line-height:1.6;margin:8px 0}
 .registerCard>.varietyFields{margin:14px 0}
 @media(max-width:600px){.registerFilters{grid-template-columns:1fr 1fr}.registerFilters label:last-child{grid-column:1/-1}}
+
+/* Versie 1.7.3: compact register achter knop, vergelijkbare tabel */
+#registerContent[hidden]{display:none}#registerPanel .line h2{margin:0}.registerTableWrap{max-width:100%;overflow:auto;border:2px solid #537d60;border-radius:11px;margin-top:12px}.registerTable{width:100%;min-width:1500px;border-collapse:collapse;font-size:.84rem}.registerTable th,.registerTable td{border-bottom:1px solid #dbe5da;padding:9px 11px;text-align:left;vertical-align:top}.registerTable th{background:#dcebdd;position:sticky;top:0;white-space:nowrap}.registerTable tbody tr:nth-child(even){background:#f6faf5}.registerEdit{padding:12px;border:2px solid #386b49;border-radius:9px;background:#f3f9f2;max-width:900px}.registerEdit button{margin-top:10px}#registerPanel .toolbar{margin-top:12px}

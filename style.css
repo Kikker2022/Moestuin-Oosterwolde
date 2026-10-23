@@ -49,3 +49,6 @@
 
 /* Versie 1.7.4: inklapbare kleurenlegenda */
 #legendContent{margin-top:12px}#legendPanel .line{align-items:center}
+
+/* 1.8: centraal moestuinregister */
+#catalogContent[hidden]{display:none}.catalogTable{min-width:900px}#catalogPanel .registerFilters{align-items:end}#catalogPanel .registerFilters button{margin-top:5px;width:100%}#catalogPanel .fileButton{background:#2d6547;color:white}#toggleLegend{background:#2d6547;color:white}

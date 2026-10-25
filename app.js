@@ -51,8 +51,39 @@ const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
 function checkpoint(){history.push(clone(state));if(history.length>40)history.shift();storeHistory();updateUndo()}
 function notify(s){$('status').textContent=s;setTimeout(()=>{if($('status').textContent===s)$('status').textContent='✓ Opgeslagen'},2600)}
-function dims(o){return o.rotation%180===0?{w:o.width,h:o.length}:{w:o.length,h:o.width}}
-function fits(o,exclude=o.id){const d=dims(o);if(o.type==='bed' && !( (o.x>=.5-.00001 && o.x+d.w<=5.5+.00001) || (o.x>=5.5-.00001 && o.x+d.w<=10.5+.00001)))return false;if(o.type==='path' && ((o.x<.5 && o.x+d.w>.00001)||(o.x<11 && o.x+d.w>10.5)))return false;if(o.x<0||o.y<0||o.x+d.w>state.width+.00001||o.y+d.h>state.length+.00001)return false;return !state.objects.some(q=>{if(q.id===exclude || (o.type==='bed' && q.type==='bed' && o.year && q.year && o.year!==q.year))return false;const e=dims(q);return o.x<q.x+e.w-.001&&o.x+d.w>q.x+.001&&o.y<q.y+e.h-.001&&o.y+d.h>q.y+.001})}
+// Rotatie: positie (x,y) is steeds de linkerbovenhoek van de omhullende rechthoek.
+function rotationInfo(o){
+ const angle=((Number(o.rotation)||0)%360+360)%360;
+ const swapped=angle%180>=90;
+ const w=swapped?o.length:o.width,h=swapped?o.width:o.length;
+ const diagonal=angle%90===45;
+ const bw=diagonal?(w+h)/Math.SQRT2:w,bh=diagonal?(w+h)/Math.SQRT2:h;
+ return {angle,swapped,diagonal,w,h,bw,bh};
+}
+function dims(o){const r=rotationInfo(o);return {w:r.bw,h:r.bh}}
+function polygon(o){
+ const r=rotationInfo(o),cx=o.x+r.bw/2,cy=o.y+r.bh/2;
+ const a=r.diagonal?Math.PI/4:0,co=Math.cos(a),si=Math.sin(a);
+ return [[-r.w/2,-r.h/2],[r.w/2,-r.h/2],[r.w/2,r.h/2],[-r.w/2,r.h/2]].map(([x,y])=>({x:cx+x*co-y*si,y:cy+x*si+y*co}));
+}
+function polygonsOverlap(a,b){
+ for(const poly of [a,b])for(let i=0;i<poly.length;i++){
+  const j=(i+1)%poly.length,dx=poly[j].x-poly[i].x,dy=poly[j].y-poly[i].y;
+  const nx=-dy,ny=dx,pa=a.map(p=>p.x*nx+p.y*ny),pb=b.map(p=>p.x*nx+p.y*ny);
+  if(Math.max(...pa)<=Math.min(...pb)+.001||Math.max(...pb)<=Math.min(...pa)+.001)return false;
+ }
+ return true;
+}
+function fits(o,exclude=o.id){
+ const poly=polygon(o),eps=.00001;
+ if(poly.some(p=>p.x<-eps||p.y<-eps||p.x>state.width+eps||p.y>state.length+eps))return false;
+ if(o.type==='bed'&&!([.5,5.5].some(left=>poly.every(p=>p.x>=left-eps&&p.x<=left+5+eps))))return false;
+ if(o.type==='path'&&poly.some(p=>p.x<.5-eps||p.x>10.5+eps))return false;
+ return !state.objects.some(q=>{
+  if(q.id===exclude||(o.type==='bed'&&q.type==='bed'&&o.year&&q.year&&o.year!==q.year))return false;
+  return polygonsOverlap(poly,polygon(q));
+ });
+}
 function sections(o){
  if(!o.sections)o.sections={};
  if(!o.sections[state.year])o.sections[state.year]=[{crop:0,length:o.length}];
@@ -72,36 +103,38 @@ if(state.layout==='AB-30x5'){
 } for(let x=0;x<=state.width;x++){add('line',{x1:x+pad,y1:pad,x2:x+pad,y2:pad+state.length,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}for(let y=0;y<=state.length;y++){add('line',{x1:pad,y1:y+pad,x2:pad+state.width,y2:y+pad,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}
 activeObjects().forEach(o=>{
  const g=add('g',{'data-id':o.id,transform:`translate(${pad+o.x} ${pad+o.y})`});
- const d=dims(o),active=selected===o.id;
- add('rect',{x:0,y:0,width:d.w,height:d.h,rx:.08,fill:o.type==='path'?'#eee8d8':'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.028:.012},g);
+ const d=dims(o),r=rotationInfo(o),active=selected===o.id;
+ const shape=r.diagonal?add('g',{transform:`translate(${d.w/2} ${d.h/2}) rotate(45) translate(${-r.w/2} ${-r.h/2})`},g):g;
+ const shapeW=r.w,shapeH=r.h;
+ add('rect',{x:0,y:0,width:shapeW,height:shapeH,rx:.08,fill:o.type==='path'?'#eee8d8':'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.028:.012},shape);
  if(o.type==='path'){
-  add('line',{x1:d.w/2,y1:.08,x2:d.w/2,y2:d.h-.08,stroke:'#b9b29f','stroke-width':'.045','stroke-dasharray':'.18 .16'},g);
+  add('line',{x1:shapeW/2,y1:.08,x2:shapeW/2,y2:shapeH-.08,stroke:'#b9b29f','stroke-width':'.045','stroke-dasharray':'.18 .16'},shape);
  }else{
   let along=0;
   sections(o).forEach((row,i)=>{
    let across=0;
    row.cols.forEach((col,j)=>{
     const crop=crops[col.crop]||crops[0];
-    const x=o.rotation%180===0?across:along;
-    const y=o.rotation%180===0?along:across;
-    const w=o.rotation%180===0?col.width:row.length;
-    const h=o.rotation%180===0?row.length:col.width;
-    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},g);
+    const x=!r.swapped?across:along;
+    const y=!r.swapped?along:across;
+    const w=!r.swapped?col.width:row.length;
+    const h=!r.swapped?row.length:col.width;
+    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},shape);
     // Versie 1.6.1: toon de volledige groentenaam, passend binnen het vak.
     // Kleine vakjes houden hun kleur; de naam blijft via de editor beschikbaar.
     const name=crop[0];
     const fontSize=Math.min(.36,h*.48,(w*.88)/(Math.max(name.length,1)*.59));
     if(fontSize>=.105 && h>=.24 && w>=.3){
-     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'600',fill:'#193b28','pointer-events':'none'},g);
+     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'600',fill:'#193b28','pointer-events':'none'},shape);
      t.textContent=name;
     }
     across+=col.width;
    });
    along+=row.length;
   });
-  add('rect',{x:0,y:0,width:d.w,height:d.h,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.028:.012},g);
+  add('rect',{x:0,y:0,width:shapeW,height:shapeH,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.028:.012},shape);
  }
- const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},g);
+ const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},shape);
  t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
 });
 $('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals();renderLibrary();renderRegister();renderCatalog()}
@@ -240,7 +273,7 @@ function mergeLength(i){
 }
 function updateObj(patch){const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
-$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:(o.rotation+90)%180})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
+$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)+90)%360})};$('rotate45').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)+45)%360})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
 function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
 $('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();storeHistory();selected=null;selectedCell=null;save();syncInputs();paint();updateUndo()};
 for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});

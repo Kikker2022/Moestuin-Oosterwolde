@@ -433,35 +433,50 @@ function selectRegisterTab(tab){
 $('showCatalogTab').onclick=()=>selectRegisterTab('catalog');
 $('showResultsTab').onclick=()=>selectRegisterTab('results');
 selectRegisterTab('catalog');
-// Versie 1.8.3: één Excel-werkblad met aankoop en teelt per product.
-const combinedHeaders=['ID aankoop','Gewas','Ras','Leverancier','Prijs (€)','Hoeveelheid','Aankoopdatum','Aankoopopmerkingen','Teelt-ID','Jaar','Vak','Tuinmaand','Gezaaid gepoot','Oogst vanaf','Oogst tot','Weersomstandigheden','Beoordeling','Opbrengst (kg)','Teeltopmerkingen'];
-function combinedKey(e){return `${e.o.id}/${e.year}/${e.i}/${e.j}/${e.k}`}
-function combinedRows(){
- ensureCatalog();const all=registerEntries(),rows=[];const covered=new Set();
- for(const e of all){const c=state.catalog.find(x=>Number(x.id)===Number(e.v.catalogId));if(c)covered.add(Number(c.id));const r=c||{id:'',crop:e.cell.crop,name:e.v.name,shop:e.v.shop,price:e.v.price,amount:e.v.amount,purchase:'',notes:''};rows.push([r.id||'',crops[r.crop]?.[0]||'',r.name||'',r.shop||'',r.price??'',r.amount||'',r.purchase||'',r.notes||'',combinedKey(e),e.year,`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`,e.v.month||'',e.v.planting||'',harvestStart(e.v),harvestEnd(e.v),e.v.weather||'',e.v.rating||'',e.v.yieldKg||'',e.v.notes||''])}
- for(const c of state.catalog){if(covered.has(Number(c.id)))continue;rows.push([c.id,crops[c.crop]?.[0]||'',c.name||'',c.shop||'',c.price??'',c.amount||'',c.purchase||'',c.notes||'','','','','','','','','','','',''])}
- return rows.sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'nl')||String(a[2]).localeCompare(String(b[2]),'nl')||String(a[9]).localeCompare(String(b[9]),'nl'));
-}
-function exportCombined(){exportXlsx(combinedHeaders,combinedRows(),'Aankoop tot oogst','moestuin-aankoop-tot-oogst.xlsx')}
-async function importCombined(file){
- const rows=await readXlsx(file);if(combinedHeaders.some((h,i)=>rows[0]?.[i]!==h))throw Error('Dit is niet het bestand Alles naar Excel uit versie 1.8.3.');
- const entries=registerEntries();const lookup=new Map(entries.map(e=>[combinedKey(e),e]));const purchaseUpdates=new Map(),teeltUpdates=new Map();let newPurchases=0;
- const str=v=>String(v??'').trim();
- for(const row of rows.slice(1)){if(!row.some(v=>str(v)))continue;const idstr=str(row[0]),id=idstr?Number(idstr):null;const crop=crops.findIndex(c=>c[0].toLocaleLowerCase('nl')===str(row[1]).toLocaleLowerCase('nl'));if(crop<1||!str(row[2]))throw Error('Onbekend gewas of ontbrekend ras: '+str(row[1]));if(id!==null&&(!Number.isSafeInteger(id)||id<1))throw Error('Ongeldig aankoop-ID');
- const purchase={id,crop,name:str(row[2]),shop:str(row[3]),price:str(row[4]),amount:str(row[5]),purchase:str(row[6]),notes:str(row[7])};
- if(id!==null){const old=purchaseUpdates.get(id);if(old&&JSON.stringify(old)!==JSON.stringify(purchase))throw Error('Tegenstrijdige aankoopgegevens voor ID '+id);purchaseUpdates.set(id,purchase)}
- else if(!str(row[8])){newPurchases++;purchaseUpdates.set('nieuw-'+newPurchases,purchase)}
- const key=str(row[8]);if(key){const e=lookup.get(key);if(!e)throw Error('Teelt-ID '+key+' niet gevonden. Voeg nieuwe teelten eerst via de plattegrond toe.');if(str(row[9])!==e.year||str(row[10])!==`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`)throw Error('Jaar of vak komt niet overeen voor teelt '+key);if(id!==null&&Number(e.v.catalogId||0)!==id)throw Error('Aankoop-ID van teelt '+key+' is gewijzigd.');if(teeltUpdates.has(key))throw Error('Dubbele teelt-ID '+key);teeltUpdates.set(key,{e,row})}
- }
- if(!confirm(`${purchaseUpdates.size} aankoopregels en ${teeltUpdates.size} bestaande teelten bijwerken vanuit één Excel-bestand? Nieuwe teelten voeg je via de plattegrond toe. Maak eerst een JSON-back-up.`))return;
- checkpoint();ensureCatalog();for(const p of purchaseUpdates.values()){const old=state.catalog.find(e=>Number(e.id)===p.id);if(old)Object.assign(old,p);else{const n=p.id&& !state.catalog.some(e=>Number(e.id)===p.id)?p.id:state.nextCatalogId++;state.nextCatalogId=Math.max(state.nextCatalogId,n+1);state.catalog.push({...p,id:n})}}
- for(const {e,row} of teeltUpdates.values()){Object.assign(e.v,{month:str(row[11]),planting:str(row[12]),harvestFrom:str(row[13]),harvestTo:str(row[14]),weather:str(row[15]),rating:str(row[16]),yieldKg:str(row[17]),notes:str(row[18])})}
- save();paint();notify('✓ Aankopen en teeltresultaten bijgewerkt vanuit Excel');
-}
-for(const id of ['catalogTabContent','registerContent']){
- $('allExport_'+id).onclick=exportCombined;
- $('allImport_'+id).onchange=async ev=>{const file=ev.target.files?.[0];if(!file)return;try{await importCombined(file)}catch(err){alert('Import mislukt: '+err.message)}finally{ev.target.value=''}};
-}
+// Versie 1.8.4: alleen-lezen totaaloverzicht, één werkblad van aankoop tot oogst.
+// De afzonderlijke Excel-import/export van beide tabbladen blijft ongewijzigd.
+$('exportWorkbook').onclick=()=>{
+ if(!workbookReady())return;
+ ensureCatalog();
+ const head=['ID aankoop','Gewas','Ras','Leverancier','Prijs (€)','Hoeveelheid gekocht','Aankoopdatum','Aankoopopmerkingen','Tuinjaar','Tuinvak','Tuinmaand','Zaai- of pootdatum','Oogst vanaf','Oogst tot','Weersomstandigheden','Beoordeling','Opbrengst (kg)','Teeltopmerkingen'];
+ const purchases=state.catalog.slice().sort((a,b)=>Number(a.crop)-Number(b.crop)||String(a.name).localeCompare(String(b.name),'nl'));
+ const records=registerEntries();
+ const rows=[];
+ const matched=new Set();
+ const toRow=(p,e)=>[
+   p?.id??e?.v.catalogId??'',
+   p?crops[p.crop]?.[0]||'':crops[e.cell.crop]?.[0]||'',
+   p?.name||e?.v.name||'',
+   p?.shop||e?.v.shop||'',
+   p?.price??e?.v.price??'',
+   p?.amount||e?.v.amount||'',
+   p?.purchase||'',
+   p?.notes||'',
+   e?.year||'',
+   e?`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`:'',
+   e?.v.month?(monthNames[Number(e.v.month)-1]||''):'',
+   e?.v.planting||'',
+   e?harvestStart(e.v):'',
+   e?harvestEnd(e.v):'',
+   e?.v.weather||'',
+   e?.v.rating||'',
+   e?.v.yieldKg??'',
+   e?.v.notes||''
+ ];
+ purchases.forEach(p=>{
+   const linked=records.filter(e=>String(e.v.catalogId||'')===String(p.id));
+   if(linked.length){linked.forEach(e=>{matched.add(e.key);rows.push(toRow(p,e))})}
+   else rows.push(toRow(p,null));
+ });
+ // Oudere teeltregistraties zonder aankoop-ID niet laten verdwijnen.
+ records.filter(e=>!matched.has(e.key)).forEach(e=>rows.push(toRow(null,e)));
+ const wb=XLSX.utils.book_new();
+ const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
+ ws['!autofilter']={ref:`A1:${XLSX.utils.encode_col(head.length-1)}${Math.max(1,rows.length+1)}`};
+ ws['!cols']=head.map((h,i)=>({wch:[12,19,27,23,13,21,17,32,12,20,16,20,17,17,26,15,17,38][i]}));
+ XLSX.utils.book_append_sheet(wb,ws,'Aankoop tot oogst');
+ XLSX.writeFile(wb,'mijn-moestuin-aankoop-tot-oogst.xlsx');
+};
 
 // Versie 1.8.2: echte Excel-downloads en gecontroleerde import.
 function workbookReady(){if(typeof XLSX==='undefined'){alert('Excel-ondersteuning is niet geladen. Controleer de internetverbinding.');return false}return true}

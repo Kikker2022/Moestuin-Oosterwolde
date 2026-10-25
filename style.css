@@ -70,7 +70,5 @@
 #toggleLegend,#toggleCatalog{width:245px;min-height:46px}
 @media(max-width:520px){#toggleLegend,#toggleCatalog{width:100%}}
 
-/* 1.8.3: compacte Excel-acties, ook op telefoon */
-#catalogTabContent>.toolbar,#registerContent>.toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-#catalogTabContent>.toolbar .compactFileButton,#registerContent>.toolbar .compactFileButton{width:auto;flex:0 1 auto;min-height:32px;padding:6px 9px;font-size:.76rem;line-height:1.15;white-space:normal;text-align:center}
-@media(max-width:520px){#catalogTabContent>.toolbar .compactFileButton,#registerContent>.toolbar .compactFileButton{flex:0 1 auto;width:auto;max-width:48%}}
+/* Versie 1.8.4: overzichtsexport compact, zonder wijzigingen aan het register. */
+#exportWorkbook{font-size:.84rem;min-height:36px;padding:7px 12px;margin-bottom:7px}

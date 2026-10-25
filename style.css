@@ -72,3 +72,11 @@
 
 /* Versie 1.8.4: overzichtsexport compact, zonder wijzigingen aan het register. */
 #exportWorkbook{font-size:.84rem;min-height:36px;padding:7px 12px;margin-bottom:7px}
+
+/* 1.8.5: overzichtelijke Excel- en gewassenknoppen */
+.fullExcelButton{background:#2d6547;color:#fff;min-height:32px!important;padding:6px 10px!important;font-size:.78rem!important;min-width:92px!important;width:auto!important;flex:0 0 auto!important}
+.cropManage{margin-top:14px;border-top:1px solid #d8e5d7;padding-top:13px}
+.cropManage>label{display:block;font-weight:650;margin-bottom:6px}
+.cropManage select{max-width:380px}
+.cropManageButtons{margin-top:9px}
+.cropManageButtons button{min-width:100px}

@@ -273,9 +273,59 @@ function mergeLength(i){
  const id=chooseMergedCrop(a.cols[0].crop,b.cols[0].crop);if(id===null)return;
  if((a.cols.some(c=>cellVarieties(c).length)||b.cols.some(c=>cellVarieties(c).length))&&!confirm('Rassen uit beide lengtedelen worden samengevoegd voor zover ze bij het gekozen gewas horen. Doorgaan?'))return;checkpoint();a.length+=b.length;a.cols.forEach((c,j)=>{c.varieties=[...cellVarieties(c),...cellVarieties(b.cols[j])].filter(v=>v.crop===id);c.crop=id});rows.splice(i+1,1);save();paint();
 }
-function updateObj(patch){const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
+function updateObj(patch){previousRotation=null;$('rotatePrevious').disabled=true;const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
-$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)+90)%360})};$('rotate45').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)-33+360)%360})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
+$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');// Draai rond het midden en zoek, indien nodig, een nabije geldige positie.
+let previousRotation=null;
+function rotateSelected(degrees){
+ const o=state.objects.find(x=>x.id===selected);if(!o)return;
+ const before=clone(o),old=dims(o),cx=o.x+old.w/2,cy=o.y+old.h/2;
+ const test={...o,rotation:((Number(o.rotation)||0)+degrees+360)%360};
+ const next=dims(test);
+ const targetX=cx-next.w/2,targetY=cy-next.h/2;
+ // Eerst exact om het midden draaien; daarna in oplopende afstand zoeken.
+ let found=null;
+ const maxRadius=6,step=.1;
+ const consider=(x,y)=>{
+   const candidate={...test,x:+x.toFixed(4),y:+y.toFixed(4)};
+   if(fits(candidate)){found=candidate;return true}return false;
+ };
+ if(!consider(targetX,targetY)){
+   outer:for(let radius=1;radius<=Math.round(maxRadius/step);radius++){
+     // Ringzoektocht voorkomt onnodig grote verplaatsingen.
+     for(let dx=-radius;dx<=radius;dx++){
+       for(const dy of [-radius,radius]){
+         if(consider(targetX+dx*step,targetY+dy*step))break outer;
+       }
+     }
+     for(let dy=-radius+1;dy<radius;dy++){
+       for(const dx of [-radius,radius]){
+         if(consider(targetX+dx*step,targetY+dy*step))break outer;
+       }
+     }
+   }
+ }
+ if(!found){notify('Geen ruimte om te draaien, ook niet op een nabije positie. Verplaats of verklein het vak eerst.');return}
+ checkpoint();
+ previousRotation={id:o.id,original:before};
+ Object.assign(o,{rotation:found.rotation,x:found.x,y:found.y});
+ $('rotatePrevious').disabled=false;
+ save();paint();
+ if(Math.hypot(found.x-targetX,found.y-targetY)>.02)notify('Gedraaid en automatisch iets verschoven om binnen de tuin te passen');
+}
+$('rotate').onclick=()=>rotateSelected(90);
+$('rotate45').onclick=()=>rotateSelected(-33);
+$('rotatePrevious').onclick=()=>{
+ if(!previousRotation)return;
+ const o=state.objects.find(x=>x.id===previousRotation.id);
+ if(!o){previousRotation=null;$('rotatePrevious').disabled=true;return}
+ checkpoint();
+ Object.assign(o,{rotation:previousRotation.original.rotation,x:previousRotation.original.x,y:previousRotation.original.y});
+ selected=o.id;
+ previousRotation=null;$('rotatePrevious').disabled=true;
+ save();paint();notify('Vorige draaiing hersteld');
+};
+// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
 function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
 $('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();storeHistory();selected=null;selectedCell=null;save();syncInputs();paint();updateUndo()};
 for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});

@@ -501,28 +501,64 @@ function renderCropManager(){
  managedCropSelection=sel.value;
 }
 $('manageCrop').onchange=()=>{managedCropSelection=$('manageCrop').value};
-function createManagedCrop(){
- const raw=prompt('Naam van het nieuwe gewas (bijv. Kruisbes):');if(raw===null)return;
- const name=raw.trim();if(!name){alert('Vul een naam in.');return}
- if(crops.some(c=>c[0].toLocaleLowerCase('nl')===name.toLocaleLowerCase('nl'))){alert('Dit gewas bestaat al.');return}
- const rawColor=prompt('Kleurcode voor het gewas (bijv. #a9c984):','#a9c984');if(rawColor===null)return;
- const color=rawColor.trim();if(!/^#[0-9a-fA-F]{6}$/.test(color)){alert('Gebruik een kleurcode zoals #a9c984.');return}
- checkpoint();state.extraCropDefs??=[];state.extraCropDefs.push({name,color});crops.push([name,color]);
- managedCropSelection=String(crops.length-1);save();fillCropMenus();paint();notify('✓ Gewas toegevoegd');
+// Versie 1.8.8: visuele kleurenkeuze voor toevoegen en wijzigen.
+const cropPalette=[
+ ['Lichtgroen','#a9c984'],['Grasgroen','#7ebf8e'],['Donkergroen','#387a4b'],
+ ['Mintgroen','#9ed2af'],['Saliegroen','#b4d8bd'],['Geelgroen','#c3dda6'],
+ ['Zachtgeel','#efd59a'],['Okergeel','#edc27b'],['Oranje','#efa66c'],
+ ['Lichtrood','#d6a0a0'],['Roze','#d8a6bb'],['Lila','#d4c7e5'],
+ ['Lavendelblauw','#b9c7ec'],['Lichtblauw','#a4c9d4'],['Beige','#e7c7a5'],
+ ['Bruin','#ba9776'],['Grijs','#c6c9c5']
+];
+let cropEditMode='add',cropEditId=null;
+const cropPaletteSelect=$('cropEditPalette');
+cropPalette.forEach(([name,hex])=>cropPaletteSelect.append(new Option(`${name} — ${hex}`,hex)));
+cropPaletteSelect.append(new Option('Eigen kleurcode…','custom'));
+function updateCropSwatch(){
+ const color=$('cropEditHex').value.trim();
+ $('cropEditSwatch').style.background=/^#[0-9a-fA-F]{6}$/.test(color)?color:'#fff';
 }
-$('cropCreate').onclick=createManagedCrop;
-$('cropChange').onclick=()=>{
- const id=Number($('manageCrop').value);if(!id||!crops[id]){alert('Kies eerst een gewas.');return}
- const nameInput=prompt('Naam van het gewas:',crops[id][0]);if(nameInput===null)return;
- const name=nameInput.trim();if(!name){alert('Vul een naam in.');return}
- if(crops.some((c,i)=>i!==id&&c[0].toLocaleLowerCase('nl')===name.toLocaleLowerCase('nl'))){alert('Deze naam bestaat al.');return}
- const colorInput=prompt('Kleurcode:',crops[id][1]);if(colorInput===null)return;
- const color=colorInput.trim();if(!/^#[0-9a-fA-F]{6}$/.test(color)){alert('Gebruik een kleurcode zoals #a9c984.');return}
- if(!confirm(`Gewas ${crops[id][0]} wijzigen in ${name}? Dit verandert ook de naam en kleur op de kaart.`))return;
- checkpoint();const oldName=crops[id][0];crops[id]=[name,color];
- state.cropOverrides??={};state.cropOverrides[String(id)]={name,color};
- if(Array.isArray(state.extraCropDefs)){const def=state.extraCropDefs.find(x=>x.name===oldName);if(def){def.name=name;def.color=color}}
- save();fillCropMenus();paint();notify('✓ Gewas gewijzigd');
+cropPaletteSelect.onchange=()=>{
+ if(cropPaletteSelect.value!=='custom')$('cropEditHex').value=cropPaletteSelect.value;
+ updateCropSwatch();
+};
+$('cropEditHex').oninput=()=>{
+ const val=$('cropEditHex').value.trim().toLowerCase();
+ cropPaletteSelect.value=cropPalette.some(([,hex])=>hex===val)?val:'custom';
+ updateCropSwatch();
+};
+function openCropEditor(mode){
+ const id=Number($('manageCrop').value);
+ if(mode==='change'&&(!id||!crops[id])){alert('Kies eerst een gewas.');return}
+ cropEditMode=mode;cropEditId=mode==='change'?id:null;
+ $('cropEditName').value=mode==='change'?crops[id][0]:'';
+ const color=mode==='change'?crops[id][1]:'#a9c984';
+ $('cropEditHex').value=color;
+ cropPaletteSelect.value=cropPalette.some(([,hex])=>hex===color.toLowerCase())?color.toLowerCase():'custom';
+ updateCropSwatch();
+ $('cropEditForm').hidden=false;
+ $('cropEditName').focus();
+}
+$('cropCreate').onclick=()=>openCropEditor('add');
+$('cropChange').onclick=()=>openCropEditor('change');
+$('cropEditCancel').onclick=()=>{$('cropEditForm').hidden=true};
+$('cropEditSave').onclick=()=>{
+ const name=$('cropEditName').value.trim();
+ const color=$('cropEditHex').value.trim();
+ if(!name){alert('Vul een naam in.');return}
+ if(!/^#[0-9a-fA-F]{6}$/.test(color)){alert('Kies een kleur of vul een HEX-kleurcode in, bijvoorbeeld #a9c984.');return}
+ if(crops.some((c,i)=>i!==cropEditId&&c[0].toLocaleLowerCase('nl')===name.toLocaleLowerCase('nl'))){alert('Dit gewas bestaat al.');return}
+ if(cropEditMode==='add'){
+   checkpoint();state.extraCropDefs??=[];state.extraCropDefs.push({name,color});crops.push([name,color]);
+   managedCropSelection=String(crops.length-1);
+ }else{
+   const id=cropEditId,oldName=crops[id][0];
+   checkpoint();crops[id]=[name,color];state.cropOverrides??={};state.cropOverrides[String(id)]={name,color};
+   if(Array.isArray(state.extraCropDefs)){const def=state.extraCropDefs.find(x=>x.name===oldName);if(def){def.name=name;def.color=color}}
+   managedCropSelection=String(id);
+ }
+ $('cropEditForm').hidden=true;save();fillCropMenus();paint();
+ notify(cropEditMode==='add'?'✓ Gewas toegevoegd':'✓ Gewas gewijzigd');
 };
 $('cropRemove').onclick=()=>{
  const id=Number($('manageCrop').value);if(!id||!crops[id]){alert('Kies eerst een gewas.');return}

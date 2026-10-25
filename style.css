@@ -95,3 +95,6 @@
 .cropEditSwatch{display:inline-block;width:48px;height:44px;border:1px solid #879e8a;border-radius:8px;flex:0 0 48px}
 
 /* Versie 1.9.0: rotatie −33 graden. */
+
+/* Versie 1.9.1: compacte herstelknop naast de draaiknoppen */
+#rotatePrevious:disabled{opacity:.45}

@@ -98,3 +98,10 @@
 
 /* Versie 1.9.1: compacte herstelknop naast de draaiknoppen */
 #rotatePrevious:disabled{opacity:.45}
+
+/* 1.9.2: eenvoudige invoer en ingeklapte geavanceerde bediening */
+.simpleBedForm{margin:12px 0;padding:14px;border:2px solid #91b69a;background:#f4faf3;border-radius:12px}
+.simpleBedForm[hidden],#advancedTools[hidden]{display:none!important}
+.simpleBedGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#toggleAdvanced{margin:10px 0}
+@media(max-width:520px){.simpleBedGrid{grid-template-columns:1fr}}

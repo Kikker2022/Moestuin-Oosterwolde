@@ -85,3 +85,11 @@
 #manageCrop{max-width:360px;margin:10px 0}
 
 /* 1.8.7: beheerkeuzelijst wordt nu tijdens de eerste weergave gevuld. */
+
+/* 1.8.8: kleurenpalet bij toevoegen en wijzigen */
+.cropEditForm{margin-top:12px;padding:13px;background:#f3f9f2;border:1px solid #a7c6ab;border-radius:10px;max-width:500px}
+.cropEditForm[hidden]{display:none}
+.cropEditForm>label{display:block;margin-bottom:10px}
+.cropColorLine{display:flex;gap:12px;align-items:end}
+.cropColorLine label{flex:1}
+.cropEditSwatch{display:inline-block;width:48px;height:44px;border:1px solid #879e8a;border-radius:8px;flex:0 0 48px}

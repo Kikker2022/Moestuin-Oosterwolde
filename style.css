@@ -80,3 +80,6 @@
 .cropManage select{max-width:380px}
 .cropManageButtons{margin-top:9px}
 .cropManageButtons button{min-width:100px}
+
+/* 1.8.6: gewaskeuze bij de beheerknoppen */
+#manageCrop{max-width:360px;margin:10px 0}

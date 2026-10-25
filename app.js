@@ -433,25 +433,35 @@ function selectRegisterTab(tab){
 $('showCatalogTab').onclick=()=>selectRegisterTab('catalog');
 $('showResultsTab').onclick=()=>selectRegisterTab('results');
 selectRegisterTab('catalog');
-// Een Excel-werkboek met vaste kolomkoppen, filters en afzonderlijke vergelijkbare werkbladen.
-$('exportWorkbook').onclick=()=>{
- if(typeof XLSX==='undefined'){alert('Excel-export is niet geladen. Controleer je internetverbinding of gebruik voorlopig de CSV-export.');return}
- ensureCatalog();
- const wb=XLSX.utils.book_new();
- const purchaseHead=['ID','Gewas','Ras','Leverancier','Prijs (€)','Hoeveelheid','Aankoopdatum','Opmerkingen'];
- const purchaseRows=state.catalog.slice().sort((a,b)=>Number(a.crop)-Number(b.crop)||String(a.name).localeCompare(String(b.name),'nl')).map(e=>[e.id,crops[e.crop]?.[0]||'',e.name||'',e.shop||'',e.price||'',e.amount||'',e.purchase||'',e.notes||'']);
- const purchaseSheet=XLSX.utils.aoa_to_sheet([purchaseHead,...purchaseRows]);
- purchaseSheet['!autofilter']={ref:`A1:H${Math.max(2,purchaseRows.length+1)}`};
- purchaseSheet['!cols']=[{wch:9},{wch:20},{wch:28},{wch:23},{wch:14},{wch:20},{wch:17},{wch:40}];
- XLSX.utils.book_append_sheet(wb,purchaseSheet,'Zaden en aankopen');
- const resultsHead=['Jaar','Vak','ID aankoop','Gewas','Ras','Tuinmaand','Gezaaid gepoot','Oogst vanaf','Oogst tot','Weersomstandigheden','Leverancier','Prijs (€)','Hoeveelheid','Beoordeling','Opbrengst (kg)','Opmerkingen'];
- const resultsRows=registerEntries().sort((a,b)=>a.year.localeCompare(b.year)||Number(a.cell.crop)-Number(b.cell.crop)||a.v.name.localeCompare(b.v.name,'nl')).map(e=>[e.year,`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`,e.v.catalogId||'',crops[e.cell.crop]?.[0]||'',e.v.name||'',e.v.month?monthNames[Number(e.v.month)-1]||'':'',e.v.planting||'',harvestStart(e.v),harvestEnd(e.v),e.v.weather||'',e.v.shop||'',e.v.price||'',e.v.amount||'',e.v.rating||'',e.v.yieldKg||'',e.v.notes||'']);
- const resultsSheet=XLSX.utils.aoa_to_sheet([resultsHead,...resultsRows]);
- resultsSheet['!autofilter']={ref:`A1:P${Math.max(2,resultsRows.length+1)}`};
- resultsSheet['!cols']=[{wch:10},{wch:20},{wch:12},{wch:20},{wch:28},{wch:17},{wch:18},{wch:17},{wch:17},{wch:27},{wch:23},{wch:13},{wch:18},{wch:15},{wch:17},{wch:42}];
- XLSX.utils.book_append_sheet(wb,resultsSheet,'Teeltresultaten');
- XLSX.writeFile(wb,'mijn-slimme-moestuinregister.xlsx');
-};
+// Versie 1.8.3: één Excel-werkblad met aankoop en teelt per product.
+const combinedHeaders=['ID aankoop','Gewas','Ras','Leverancier','Prijs (€)','Hoeveelheid','Aankoopdatum','Aankoopopmerkingen','Teelt-ID','Jaar','Vak','Tuinmaand','Gezaaid gepoot','Oogst vanaf','Oogst tot','Weersomstandigheden','Beoordeling','Opbrengst (kg)','Teeltopmerkingen'];
+function combinedKey(e){return `${e.o.id}/${e.year}/${e.i}/${e.j}/${e.k}`}
+function combinedRows(){
+ ensureCatalog();const all=registerEntries(),rows=[];const covered=new Set();
+ for(const e of all){const c=state.catalog.find(x=>Number(x.id)===Number(e.v.catalogId));if(c)covered.add(Number(c.id));const r=c||{id:'',crop:e.cell.crop,name:e.v.name,shop:e.v.shop,price:e.v.price,amount:e.v.amount,purchase:'',notes:''};rows.push([r.id||'',crops[r.crop]?.[0]||'',r.name||'',r.shop||'',r.price??'',r.amount||'',r.purchase||'',r.notes||'',combinedKey(e),e.year,`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`,e.v.month||'',e.v.planting||'',harvestStart(e.v),harvestEnd(e.v),e.v.weather||'',e.v.rating||'',e.v.yieldKg||'',e.v.notes||''])}
+ for(const c of state.catalog){if(covered.has(Number(c.id)))continue;rows.push([c.id,crops[c.crop]?.[0]||'',c.name||'',c.shop||'',c.price??'',c.amount||'',c.purchase||'',c.notes||'','','','','','','','','','','',''])}
+ return rows.sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'nl')||String(a[2]).localeCompare(String(b[2]),'nl')||String(a[9]).localeCompare(String(b[9]),'nl'));
+}
+function exportCombined(){exportXlsx(combinedHeaders,combinedRows(),'Aankoop tot oogst','moestuin-aankoop-tot-oogst.xlsx')}
+async function importCombined(file){
+ const rows=await readXlsx(file);if(combinedHeaders.some((h,i)=>rows[0]?.[i]!==h))throw Error('Dit is niet het bestand Alles naar Excel uit versie 1.8.3.');
+ const entries=registerEntries();const lookup=new Map(entries.map(e=>[combinedKey(e),e]));const purchaseUpdates=new Map(),teeltUpdates=new Map();let newPurchases=0;
+ const str=v=>String(v??'').trim();
+ for(const row of rows.slice(1)){if(!row.some(v=>str(v)))continue;const idstr=str(row[0]),id=idstr?Number(idstr):null;const crop=crops.findIndex(c=>c[0].toLocaleLowerCase('nl')===str(row[1]).toLocaleLowerCase('nl'));if(crop<1||!str(row[2]))throw Error('Onbekend gewas of ontbrekend ras: '+str(row[1]));if(id!==null&&(!Number.isSafeInteger(id)||id<1))throw Error('Ongeldig aankoop-ID');
+ const purchase={id,crop,name:str(row[2]),shop:str(row[3]),price:str(row[4]),amount:str(row[5]),purchase:str(row[6]),notes:str(row[7])};
+ if(id!==null){const old=purchaseUpdates.get(id);if(old&&JSON.stringify(old)!==JSON.stringify(purchase))throw Error('Tegenstrijdige aankoopgegevens voor ID '+id);purchaseUpdates.set(id,purchase)}
+ else if(!str(row[8])){newPurchases++;purchaseUpdates.set('nieuw-'+newPurchases,purchase)}
+ const key=str(row[8]);if(key){const e=lookup.get(key);if(!e)throw Error('Teelt-ID '+key+' niet gevonden. Voeg nieuwe teelten eerst via de plattegrond toe.');if(str(row[9])!==e.year||str(row[10])!==`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`)throw Error('Jaar of vak komt niet overeen voor teelt '+key);if(id!==null&&Number(e.v.catalogId||0)!==id)throw Error('Aankoop-ID van teelt '+key+' is gewijzigd.');if(teeltUpdates.has(key))throw Error('Dubbele teelt-ID '+key);teeltUpdates.set(key,{e,row})}
+ }
+ if(!confirm(`${purchaseUpdates.size} aankoopregels en ${teeltUpdates.size} bestaande teelten bijwerken vanuit één Excel-bestand? Nieuwe teelten voeg je via de plattegrond toe. Maak eerst een JSON-back-up.`))return;
+ checkpoint();ensureCatalog();for(const p of purchaseUpdates.values()){const old=state.catalog.find(e=>Number(e.id)===p.id);if(old)Object.assign(old,p);else{const n=p.id&& !state.catalog.some(e=>Number(e.id)===p.id)?p.id:state.nextCatalogId++;state.nextCatalogId=Math.max(state.nextCatalogId,n+1);state.catalog.push({...p,id:n})}}
+ for(const {e,row} of teeltUpdates.values()){Object.assign(e.v,{month:str(row[11]),planting:str(row[12]),harvestFrom:str(row[13]),harvestTo:str(row[14]),weather:str(row[15]),rating:str(row[16]),yieldKg:str(row[17]),notes:str(row[18])})}
+ save();paint();notify('✓ Aankopen en teeltresultaten bijgewerkt vanuit Excel');
+}
+for(const id of ['catalogTabContent','registerContent']){
+ $('allExport_'+id).onclick=exportCombined;
+ $('allImport_'+id).onchange=async ev=>{const file=ev.target.files?.[0];if(!file)return;try{await importCombined(file)}catch(err){alert('Import mislukt: '+err.message)}finally{ev.target.value=''}};
+}
 
 // Versie 1.8.2: echte Excel-downloads en gecontroleerde import.
 function workbookReady(){if(typeof XLSX==='undefined'){alert('Excel-ondersteuning is niet geladen. Controleer de internetverbinding.');return false}return true}

@@ -16,7 +16,7 @@ const knownVarieties={
 };
 const extraCrops=['Tomaat','Komkommer','Courgette','Pompoen','Paprika','Peper','Radijs','Pastinaak','Knolselderij','Bleekselderij','Venkel','Erwt','Peultjes','Tuinboon','Mais','Rucola','Andijvie','Snijbiet','Aardbei','Framboos','Braam','Blauwe bes','Rode bes','Zwarte bes','Druif','Rabarber','Appel','Peer','Kers','Pruim','Kruiden'];
 extraCrops.forEach((name,i)=>crops.push([name,['#c3dda6','#e7c7a5','#b4d8bd','#d4c7e5','#efd59a'][i%5]]));
-const cropNames=()=>crops.map((c,i)=>({id:i,name:c[0]})).filter(c=>c.id>0);
+const cropNames=()=>crops.map((c,i)=>({id:i,name:c[0]})).filter(c=>c.id>0 && !(state?.hiddenCropIds||[]).includes(c.id));
 const cellVarieties=c=>Array.isArray(c.varieties)?c.varieties:[];
 const varietyLabel=c=>{const v=cellVarieties(c);return v.length===1?v[0].name:v.length>1?v.length+' rassen':(crops[c.crop]?.[0]||'Leeg')};
 function ensureLibrary(){if(!Array.isArray(state.customVarieties))state.customVarieties=[]}
@@ -30,7 +30,7 @@ let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial();if(!Array.i
 let selected=null,selectedCell=null,history=[],drag=null;
 function ensureCatalog(){if(!Array.isArray(state.catalog))state.catalog=[];if(!Number.isInteger(state.nextCatalogId))state.nextCatalogId=1;for(const e of state.catalog){const n=Number(e.id);if(Number.isFinite(n)&&n>=state.nextCatalogId)state.nextCatalogId=n+1}}
 ensureCatalog();
-function loadCustomCrops(){for(const e of state.extraCropDefs||[]){if(!crops.some(c=>c[0]===e.name))crops.push([e.name,e.color||"#a9c984"])}}
+function loadCustomCrops(){for(const e of state.extraCropDefs||[]){if(!crops.some(c=>c[0]===e.name))crops.push([e.name,e.color||"#a9c984"])}for(const [key,v] of Object.entries(state.cropOverrides||{})){const id=Number(key);if(crops[id]&&v?.name&&v?.color)crops[id]=[v.name,v.color]}}
 loadCustomCrops();
 const HISTORY_KEY=KEY+'-history-v15';
 try {const stored=JSON.parse(localStorage.getItem(HISTORY_KEY));if(Array.isArray(stored))history=stored.filter(s=>s&&Array.isArray(s.objects)).slice(-40)}catch{}
@@ -109,7 +109,7 @@ function renderTotals(){
   if(c.crop)sums.set(c.crop,(sums.get(c.crop)||0)+area);
  })));
  $('cropTotals').textContent=`In ${state.year} ingedeeld: ${used.toLocaleString('nl-NL',{maximumFractionDigits:2})} m² · `+(sums.size?[...sums].map(([id,a])=>`${String(id).padStart(2,'0')} ${crops[id]?.[0]||'?'}: ${a.toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`).join(' · '):'nog geen groenten toegewezen');
- const legend=$('cropLegend');legend.replaceChildren();crops.slice(1).forEach(([name,color],i)=>{const item=document.createElement('span');item.className='legendItem';const sw=document.createElement('i');sw.style.background=color;item.append(sw,document.createTextNode(`${String(i+1).padStart(2,'0')} ${name}`));legend.append(item)});
+ const legend=$('cropLegend');legend.replaceChildren();crops.forEach(([name,color],i)=>{if(i===0||(state.hiddenCropIds||[]).includes(i))return;const item=document.createElement('span');item.className='legendItem';const sw=document.createElement('i');sw.style.background=color;item.append(sw,document.createTextNode(`${String(i).padStart(2,'0')} ${name}`));legend.append(item)});renderCropManager();
 }
 function renderEditor(){
  const o=state.objects.find(x=>x.id===selected && visible(x));
@@ -140,7 +140,7 @@ function renderEditor(){
    const row=document.createElement('div');row.className='sectionRow';
    const a=document.createElement('label');a.textContent=`Vak ${i+1}.${j+1} · Groente`;
    const select=document.createElement('select');
-   crops.forEach(([n],k)=>{const opt=document.createElement('option');opt.value=k;opt.textContent=n;select.append(opt)});
+   crops.forEach(([n],k)=>{if((state.hiddenCropIds||[]).includes(k))return;const opt=document.createElement('option');opt.value=k;opt.textContent=n;select.append(opt)});
    select.value=c.crop;
    select.onchange=()=>{const newCrop=Number(select.value);if(cellVarieties(c).length&&!confirm('De rassenregistraties in dit vak wissen omdat je het gewas verandert?')){paint();return}checkpoint();c.crop=newCrop;c.varieties=[];save();paint()};a.append(select);
    const b=document.createElement('label');b.textContent='Breedte (m)';
@@ -338,7 +338,7 @@ function fillCropMenus(){const filter=$('catalogCropFilter'),picker=$('newCatalo
 $('catalogAdd').onclick=()=>{$('catalogNewForm').hidden=false;fillCropMenus();$('newCatalogName').focus()};
 $('cancelCatalogNew').onclick=()=>{$('catalogNewForm').hidden=true};
 $('saveCatalogNew').onclick=()=>{const crop=Number($('newCatalogCrop').value),name=$('newCatalogName').value.trim();if(!crop||!name){alert('Kies een gewas en vul een rasnaam in.');return}checkpoint();ensureCatalog();const entry={id:state.nextCatalogId++,crop,name,shop:'',price:'',amount:'',purchase:'',notes:''};state.catalog.push(entry);catalogEdit=entry.id;$('catalogNewForm').hidden=true;$('newCatalogName').value='';save();paint()};
-$('addCrop').onclick=()=>{const name=prompt('Naam van het nieuwe gewas (bijv. Kruisbes):');if(!name?.trim())return;const n=name.trim();if(crops.some(c=>c[0].toLocaleLowerCase('nl')===n.toLocaleLowerCase('nl'))){alert('Dit gewas bestaat al.');return}const color=prompt('Kies een kleurcode voor het gewas, bijvoorbeeld #a9c984:','#a9c984');if(color===null)return;if(!/^#[0-9a-fA-F]{6}$/.test(color.trim())){alert('Gebruik een kleurcode zoals #a9c984');return}checkpoint();state.extraCropDefs??=[];state.extraCropDefs.push({name:n,color:color.trim()});crops.push([n,color.trim()]);save();fillCropMenus();$('newCatalogCrop').value=String(crops.length-1);paint()};
+$('addCrop').onclick=()=>createManagedCrop();
 function assignCatalogToCell(id,obj,i,j){const e=state.catalog.find(x=>String(x.id)===String(id));if(!e||!obj||obj.type!=='bed')return;const cell=sections(obj)[i]?.cols[j];if(!cell)return;if(cellVarieties(cell).length&&Number(cell.crop)!==Number(e.crop)&&!confirm('Dit vak bevat andere teeltgegevens. Deze vervangen?'))return;checkpoint();if(Number(cell.crop)!==Number(e.crop)){cell.crop=Number(e.crop);cell.varieties=[]}cell.varieties??=[];if(cell.varieties.some(v=>String(v.catalogId)===String(e.id))){notify('Dit ras staat al in dit vak');return}const v=newVariety(e.crop,e.name);Object.assign(v,{catalogId:e.id,shop:e.shop||'',price:e.price||'',amount:e.amount||''});cell.varieties.push(v);pendingAssignment=null;save();paint();notify('✓ Ras aan tuinvlak toegewezen')}
 function downloadCsv(rows,filename){const esc=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,m=>"'"+m)+'"';const csv='\uFEFF'+rows.map(r=>r.map(esc).join(';')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 $('catalogExport').onclick=()=>{ensureCatalog();downloadCsv([catalogColumns.map(x=>x[1]),...state.catalog.slice().sort((a,b)=>a.crop-b.crop||a.name.localeCompare(b.name,'nl')).map(e=>catalogColumns.map(([k])=>k==='crop'?crops[e.crop]?.[0]:e[k]))],'mijn-moestuinregister.csv')};
@@ -486,3 +486,49 @@ $('exportRegister').onclick=()=>{const head=['Jaar','Vak','ID aankoop','Gewas','
 async function readXlsx(file){if(!workbookReady())throw Error('Excel-ondersteuning niet beschikbaar');const data=await file.arrayBuffer();const book=XLSX.read(data,{type:'array',cellDates:false});if(!book.SheetNames.length)throw Error('Leeg Excel-bestand');return XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:'',raw:false})}
 $('catalogImport').onchange=async ev=>{const file=ev.target.files?.[0];if(!file)return;try{const rows=await readXlsx(file),head=catalogColumns.map(x=>x[1]);if(head.some((h,i)=>rows[0]?.[i]!==h))throw Error('Kolommen komen niet overeen met de Excel-export.');const entries=[];const seen=new Set();for(const row of rows.slice(1)){if(!row.some(v=>String(v).trim()))continue;const rec={};catalogColumns.forEach(([k],i)=>rec[k]=String(row[i]??'').trim());const crop=crops.findIndex(c=>c[0].toLocaleLowerCase('nl')===rec.crop.toLocaleLowerCase('nl'));if(crop<1||!rec.name)throw Error('Onbekend gewas of lege rasnaam');rec.crop=crop;rec.id=rec.id?Number(rec.id):null;if(rec.id!==null&&(!Number.isSafeInteger(rec.id)||rec.id<1||seen.has(rec.id)))throw Error('Dubbel of ongeldig ID');if(rec.id)seen.add(rec.id);entries.push(rec)}if(!confirm(`${entries.length} aankopen importeren? Bestaande ID's worden bijgewerkt. Maak eerst een JSON-back-up.`))return;checkpoint();ensureCatalog();for(const rec of entries){const existing=state.catalog.find(x=>x.id===rec.id);if(existing)Object.assign(existing,rec);else{if(!rec.id||state.catalog.some(x=>x.id===rec.id))rec.id=state.nextCatalogId++;else state.nextCatalogId=Math.max(state.nextCatalogId,rec.id+1);state.catalog.push(rec)}}save();paint();notify('✓ Excel-aankopen geïmporteerd')}catch(e){alert('Excel-import mislukt: '+e.message)}finally{ev.target.value=''}};
 $('importRegister').onchange=async ev=>{const file=ev.target.files?.[0];if(!file)return;try{const rows=await readXlsx(file);const head=['Jaar','Vak','ID aankoop','Gewas','Ras','Tuinmaand','Gezaaid gepoot','Oogst vanaf','Oogst tot','Weersomstandigheden','Leverancier','Prijs (€)','Hoeveelheid','Beoordeling','Opbrengst (kg)','Opmerkingen'];if(head.some((h,i)=>rows[0]?.[i]!==h))throw Error('Kolommen komen niet overeen met de teeltresultaten-export.');const lookup=new Map(registerEntries().map(e=>[`${e.year}|${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}|${e.v.catalogId||''}|${e.v.name}`,e]));const changes=[];for(const row of rows.slice(1)){if(!row.some(v=>String(v).trim()))continue;const key=`${row[0]}|${row[1]}|${row[2]}|${row[4]}`;const e=lookup.get(key);if(!e)throw Error('Teeltregel niet gevonden: '+key+'. Voeg nieuwe teelten eerst toe via de plattegrond.');changes.push({e,row})}if(!confirm(`${changes.length} bestaande teeltregels bijwerken vanuit Excel? Maak eerst een JSON-back-up.`))return;checkpoint();for(const {e,row} of changes){Object.assign(e.v,{month:String(row[5]||''),planting:String(row[6]||''),harvestFrom:String(row[7]||''),harvestTo:String(row[8]||''),weather:String(row[9]||''),rating:String(row[13]||''),yieldKg:String(row[14]||''),notes:String(row[15]||'')})}save();paint();notify('✓ Teeltresultaten bijgewerkt vanuit Excel')}catch(e){alert('Import mislukt: '+e.message)}finally{ev.target.value=''}};
+
+
+// Versie 1.8.5: gewassen beheren met stabiele nummers (nooit indexen verschuiven).
+let managedCropSelection='';
+function renderCropManager(){
+ const sel=$('manageCrop');if(!sel)return;
+ const old=managedCropSelection||sel.value;
+ sel.replaceChildren();sel.append(new Option('Kies een gewas…',''));
+ cropNames().forEach(({id,name})=>sel.append(new Option(String(id).padStart(2,'0')+' · '+name,String(id))));
+ sel.value=[...sel.options].some(o=>o.value===old)?old:'';
+ managedCropSelection=sel.value;
+}
+$('manageCrop').onchange=()=>{managedCropSelection=$('manageCrop').value};
+function createManagedCrop(){
+ const raw=prompt('Naam van het nieuwe gewas (bijv. Kruisbes):');if(raw===null)return;
+ const name=raw.trim();if(!name){alert('Vul een naam in.');return}
+ if(crops.some(c=>c[0].toLocaleLowerCase('nl')===name.toLocaleLowerCase('nl'))){alert('Dit gewas bestaat al.');return}
+ const rawColor=prompt('Kleurcode voor het gewas (bijv. #a9c984):','#a9c984');if(rawColor===null)return;
+ const color=rawColor.trim();if(!/^#[0-9a-fA-F]{6}$/.test(color)){alert('Gebruik een kleurcode zoals #a9c984.');return}
+ checkpoint();state.extraCropDefs??=[];state.extraCropDefs.push({name,color});crops.push([name,color]);
+ managedCropSelection=String(crops.length-1);save();fillCropMenus();paint();notify('✓ Gewas toegevoegd');
+}
+$('cropCreate').onclick=createManagedCrop;
+$('cropChange').onclick=()=>{
+ const id=Number($('manageCrop').value);if(!id||!crops[id]){alert('Kies eerst een gewas.');return}
+ const nameInput=prompt('Naam van het gewas:',crops[id][0]);if(nameInput===null)return;
+ const name=nameInput.trim();if(!name){alert('Vul een naam in.');return}
+ if(crops.some((c,i)=>i!==id&&c[0].toLocaleLowerCase('nl')===name.toLocaleLowerCase('nl'))){alert('Deze naam bestaat al.');return}
+ const colorInput=prompt('Kleurcode:',crops[id][1]);if(colorInput===null)return;
+ const color=colorInput.trim();if(!/^#[0-9a-fA-F]{6}$/.test(color)){alert('Gebruik een kleurcode zoals #a9c984.');return}
+ if(!confirm(`Gewas ${crops[id][0]} wijzigen in ${name}? Dit verandert ook de naam en kleur op de kaart.`))return;
+ checkpoint();const oldName=crops[id][0];crops[id]=[name,color];
+ state.cropOverrides??={};state.cropOverrides[String(id)]={name,color};
+ if(Array.isArray(state.extraCropDefs)){const def=state.extraCropDefs.find(x=>x.name===oldName);if(def){def.name=name;def.color=color}}
+ save();fillCropMenus();paint();notify('✓ Gewas gewijzigd');
+};
+$('cropRemove').onclick=()=>{
+ const id=Number($('manageCrop').value);if(!id||!crops[id]){alert('Kies eerst een gewas.');return}
+ const inCatalog=(state.catalog||[]).some(e=>Number(e.crop)===id);
+ const inPlots=state.objects.some(o=>o.type==='bed'&&Object.values(o.sections||{}).some(rows=>rows.some(r=>(r.cols||[]).some(c=>Number(c.crop)===id||cellVarieties(c).some(v=>Number(v.crop)===id)))));
+ if(inCatalog||inPlots){alert('Dit gewas wordt nog gebruikt bij aankopen of in een tuinvak. Verwijder eerst die koppelingen. Er is niets gewijzigd.');return}
+ if(!confirm(`Gewas ${crops[id][0]} uit de keuzelijsten verwijderen?`))return;
+ checkpoint();state.hiddenCropIds??=[];if(!state.hiddenCropIds.includes(id))state.hiddenCropIds.push(id);
+ managedCropSelection='';save();fillCropMenus();paint();notify('✓ Gewas verwijderd uit de keuzelijsten');
+};
+$('exportWorkbookResults').onclick=()=>$('exportWorkbook').click();

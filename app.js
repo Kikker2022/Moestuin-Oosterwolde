@@ -30,8 +30,10 @@ let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial();if(!Array.i
 let selected=null,selectedCell=null,history=[],drag=null;
 function ensureCatalog(){if(!Array.isArray(state.catalog))state.catalog=[];if(!Number.isInteger(state.nextCatalogId))state.nextCatalogId=1;for(const e of state.catalog){const n=Number(e.id);if(Number.isFinite(n)&&n>=state.nextCatalogId)state.nextCatalogId=n+1}}
 ensureCatalog();
+function applyCropOverrides(){for(const [id,def] of Object.entries(state.cropOverrides||{})){const n=Number(id);if(crops[n]&&def?.name&&def?.color)crops[n]=[def.name,def.color]}}
 function loadCustomCrops(){for(const e of state.extraCropDefs||[]){if(!crops.some(c=>c[0]===e.name))crops.push([e.name,e.color||"#a9c984"])}for(const [key,v] of Object.entries(state.cropOverrides||{})){const id=Number(key);if(crops[id]&&v?.name&&v?.color)crops[id]=[v.name,v.color]}}
 loadCustomCrops();
+applyCropOverrides();
 const HISTORY_KEY=KEY+'-history-v15';
 try {const stored=JSON.parse(localStorage.getItem(HISTORY_KEY));if(Array.isArray(stored))history=stored.filter(s=>s&&Array.isArray(s.objects)).slice(-40)}catch{}
 function storeHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history))}catch{notify('Geschiedenis kon niet worden opgeslagen')}}
@@ -247,7 +249,7 @@ $('gardenLength').onchange=resizeGarden;$('gardenWidth').onchange=resizeGarden;$
 const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clientX;p.y=evt.clientY;const matrix=svg.getScreenCTM();if(!matrix)return null;const q=p.matrixTransform(matrix.inverse());return{x:q.x-1,y:q.y-1}}
 svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{if(!drag)return;const p=point(e);const o=state.objects.find(x=>x.id===drag.id);if(!p||!o)return;const dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.abs(dx)+Math.abs(dy)>.08)drag.moved=true;const nx=Math.round((drag.x+dx)*10)/10,ny=Math.round((drag.y+dy)*10)/10;const test={...o,x:nx,y:ny};if(fits(test)){o.x=nx;o.y=ny;paint()}});function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-$('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;ensureCatalog();loadCustomCrops();selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
+$('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;ensureCatalog();loadCustomCrops();applyCropOverrides();selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};
 
 // Versie 1.7.2: overzicht van alle teeltgegevens, onafhankelijk van de geselecteerde strook.
@@ -351,7 +353,7 @@ syncInputs();paint();applyZoom();updateUndo();
 window.gardenGetState=()=>clone(state);
 window.gardenReceiveCloud=function(incoming){
  if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||!['2026','2027'].includes(incoming.year)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig online tuinplan');
- checkpoint();state=clone(incoming);ensureCatalog();loadCustomCrops();selected=null;selectedCell=null;
+ checkpoint();state=clone(incoming);ensureCatalog();loadCustomCrops();applyCropOverrides();selected=null;selectedCell=null;
  localStorage.setItem(KEY,JSON.stringify(state));syncInputs();paint();updateUndo();
 };
 

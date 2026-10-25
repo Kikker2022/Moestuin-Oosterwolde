@@ -38,7 +38,7 @@ applyCropOverrides();
 const HISTORY_KEY=KEY+'-history-v15';
 try {const stored=JSON.parse(localStorage.getItem(HISTORY_KEY));if(Array.isArray(stored))history=stored.filter(s=>s&&Array.isArray(s.objects)).slice(-40)}catch{}
 function storeHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history))}catch{notify('Geschiedenis kon niet worden opgeslagen')}}
-function updateUndo(){$('undo').disabled=!history.length}
+function updateUndo(){$('undo').disabled=!history.length;if($('rotatePrevious'))$('rotatePrevious').disabled=!history.length}
 
 let mapZoom=100;
 function applyZoom(){const map=$('map');map.style.width=mapZoom+'%';$('mapZoom').value=mapZoom;$('zoomValue').textContent=mapZoom+'%'}
@@ -273,9 +273,37 @@ function mergeLength(i){
  const id=chooseMergedCrop(a.cols[0].crop,b.cols[0].crop);if(id===null)return;
  if((a.cols.some(c=>cellVarieties(c).length)||b.cols.some(c=>cellVarieties(c).length))&&!confirm('Rassen uit beide lengtedelen worden samengevoegd voor zover ze bij het gekozen gewas horen. Doorgaan?'))return;checkpoint();a.length+=b.length;a.cols.forEach((c,j)=>{c.varieties=[...cellVarieties(c),...cellVarieties(b.cols[j])].filter(v=>v.crop===id);c.crop=id});rows.splice(i+1,1);save();paint();
 }
-function updateObj(patch){previousRotation=null;$('rotatePrevious').disabled=true;const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
+function updateObj(patch){previousRotation=null;const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
-$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');// Draai rond het midden en zoek, indien nodig, een nabije geldige positie.
+// Eenvoudige invoer: één scherm en automatische plaatsing in A of B.
+function refreshSimpleCrops(){
+ const select=$('simpleCrop'),chosen=select.value;select.replaceChildren();
+ crops.forEach(([name],id)=>{if(id)select.append(new Option(name,String(id)))});
+ if(chosen&&[...select.options].some(o=>o.value===chosen))select.value=chosen;
+}
+$('addBed').onclick=()=>{refreshSimpleCrops();$('simpleBedForm').hidden=false;$('simpleBedForm').scrollIntoView({behavior:'smooth',block:'nearest'})};
+$('simpleCancel').onclick=()=>{$('simpleBedForm').hidden=true};
+$('toggleAdvanced').onclick=()=>{const area=$('advancedTools');area.hidden=!area.hidden;$('toggleAdvanced').setAttribute('aria-expanded',String(!area.hidden));$('toggleAdvanced').textContent=area.hidden?'⚙ Geavanceerd bewerken':'⚙ Geavanceerd sluiten'};
+$('simpleCreate').onclick=()=>{
+ const part=$('simpleSection').value,crop=Number($('simpleCrop').value),length=Number($('simpleLength').value),width=Number($('simpleWidth').value);
+ if(!Number.isFinite(length)||!Number.isFinite(width)||length<.2||width<.2||length>state.length||width>5||!crops[crop]){alert('Controleer de afmetingen en kies een groente. Een vak mag maximaal 5 meter breed zijn.');return}
+ const x0=part==='A'?.5:5.5;
+ const obj={id:state.nextId,type:'bed',year:state.year,x:x0,y:0,length,width,rotation:0,sections:{}};
+ obj.sections[state.year]=[{length,cols:[{crop,width,varieties:[]}]}];
+ const otherYear=state.year==='2026'?'2027':'2026';
+ obj.sections[otherYear]=[{length,cols:[{crop:0,width,varieties:[]}]}];
+ let found=false;
+ // Zoek op een raster van 10 cm, van boven naar beneden. Houd bestaande vakken intact.
+ for(let y=0;y<=state.length-length+.00001&&!found;y+=.1){
+   for(let x=x0;x<=x0+5-width+.00001;x+=.1){obj.x=+x.toFixed(3);obj.y=+y.toFixed(3);if(fits(obj,null)){found=true;break}}
+ }
+ if(!found){alert('Geen vrije ruimte gevonden in tuingedeelte '+part+'. Probeer een kleiner vak of verplaats eerst een bestaand vak.');return}
+ checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;selectedCell={i:0,j:0};
+ $('simpleBedForm').hidden=true;save();paint();notify('✓ '+crops[crop][0]+' geplaatst in tuingedeelte '+part);
+};
+$('addPath').onclick=()=>addObj('path');
+// Draai rond het midden en zoek, indien nodig, een nabije geldige positie.
+// Vorige gebruikt dezelfde bewerkingsgeschiedenis als Ongedaan, maximaal 40 stappen.
 let previousRotation=null;
 function rotateSelected(degrees){
  const o=state.objects.find(x=>x.id===selected);if(!o)return;
@@ -309,25 +337,22 @@ function rotateSelected(degrees){
  checkpoint();
  previousRotation={id:o.id,original:before};
  Object.assign(o,{rotation:found.rotation,x:found.x,y:found.y});
- $('rotatePrevious').disabled=false;
  save();paint();
  if(Math.hypot(found.x-targetX,found.y-targetY)>.02)notify('Gedraaid en automatisch iets verschoven om binnen de tuin te passen');
 }
 $('rotate').onclick=()=>rotateSelected(90);
 $('rotate45').onclick=()=>rotateSelected(-33);
-$('rotatePrevious').onclick=()=>{
- if(!previousRotation)return;
- const o=state.objects.find(x=>x.id===previousRotation.id);
- if(!o){previousRotation=null;$('rotatePrevious').disabled=true;return}
- checkpoint();
- Object.assign(o,{rotation:previousRotation.original.rotation,x:previousRotation.original.x,y:previousRotation.original.y});
- selected=o.id;
- previousRotation=null;$('rotatePrevious').disabled=true;
- save();paint();notify('Vorige draaiing hersteld');
-};
+$('rotatePrevious').onclick=()=>undoGardenStep();
 // De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
 function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
-$('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();storeHistory();selected=null;selectedCell=null;save();syncInputs();paint();updateUndo()};
+$('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};function undoGardenStep(){
+ if(!history.length){notify('Geen eerdere bewerking meer');return}
+ state=history.pop();storeHistory();selected=null;selectedCell=null;
+ previousRotation=null;loadCustomCrops();applyCropOverrides();
+ save();syncInputs();paint();updateUndo();notify('Vorige bewerking hersteld');
+}
+$('undo').onclick=undoGardenStep;
+
 for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});
 function resizeGarden(){const length=Number($('gardenLength').value),width=Number($('gardenWidth').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
 function syncInputs(){$('gardenLength').value=state.length;$('gardenWidth').value=state.width;$('year').value=state.year}

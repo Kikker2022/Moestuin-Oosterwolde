@@ -56,14 +56,16 @@ function rotationInfo(o){
  const angle=((Number(o.rotation)||0)%360+360)%360;
  const swapped=angle%180>=90;
  const w=swapped?o.length:o.width,h=swapped?o.width:o.length;
- const diagonal=angle%90===45;
- const bw=diagonal?(w+h)/Math.SQRT2:w,bh=diagonal?(w+h)/Math.SQRT2:h;
- return {angle,swapped,diagonal,w,h,bw,bh};
+ const localAngle=angle%90;
+ const radians=localAngle*Math.PI/180;
+ const bw=Math.abs(w*Math.cos(radians))+Math.abs(h*Math.sin(radians));
+ const bh=Math.abs(w*Math.sin(radians))+Math.abs(h*Math.cos(radians));
+ return {angle,swapped,localAngle,w,h,bw,bh};
 }
 function dims(o){const r=rotationInfo(o);return {w:r.bw,h:r.bh}}
 function polygon(o){
  const r=rotationInfo(o),cx=o.x+r.bw/2,cy=o.y+r.bh/2;
- const a=r.diagonal?Math.PI/4:0,co=Math.cos(a),si=Math.sin(a);
+ const a=r.localAngle*Math.PI/180,co=Math.cos(a),si=Math.sin(a);
  return [[-r.w/2,-r.h/2],[r.w/2,-r.h/2],[r.w/2,r.h/2],[-r.w/2,r.h/2]].map(([x,y])=>({x:cx+x*co-y*si,y:cy+x*si+y*co}));
 }
 function polygonsOverlap(a,b){
@@ -104,7 +106,7 @@ if(state.layout==='AB-30x5'){
 activeObjects().forEach(o=>{
  const g=add('g',{'data-id':o.id,transform:`translate(${pad+o.x} ${pad+o.y})`});
  const d=dims(o),r=rotationInfo(o),active=selected===o.id;
- const shape=r.diagonal?add('g',{transform:`translate(${d.w/2} ${d.h/2}) rotate(45) translate(${-r.w/2} ${-r.h/2})`},g):g;
+ const shape=r.localAngle?add('g',{transform:`translate(${d.w/2} ${d.h/2}) rotate(${r.localAngle}) translate(${-r.w/2} ${-r.h/2})`},g):g;
  const shapeW=r.w,shapeH=r.h;
  add('rect',{x:0,y:0,width:shapeW,height:shapeH,rx:.08,fill:o.type==='path'?'#eee8d8':'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.028:.012},shape);
  if(o.type==='path'){
@@ -273,7 +275,7 @@ function mergeLength(i){
 }
 function updateObj(patch){const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
-$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)+90)%360})};$('rotate45').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)+45)%360})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
+$('addBed').onclick=()=>addObj('bed');$('addPath').onclick=()=>addObj('path');$('rotate').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)+90)%360})};$('rotate45').onclick=()=>{const o=state.objects.find(x=>x.id===selected);if(!o)return;updateObj({rotation:((Number(o.rotation)||0)-33+360)%360})};// De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
 function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
 $('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};$('undo').onclick=()=>{if(!history.length)return;state=history.pop();storeHistory();selected=null;selectedCell=null;save();syncInputs();paint();updateUndo()};
 for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});

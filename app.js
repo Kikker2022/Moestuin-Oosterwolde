@@ -28,6 +28,7 @@ const clone=v=>JSON.parse(JSON.stringify(v));
 const initial=()=>({catalog:[],nextCatalogId:1,length:30,width:11,year:'2026',nextId:1,layout:'AB-30x5',objects:[]});
 let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial();if(!Array.isArray(state.objects)||!state.length||!state.width)throw Error()}catch{state=initial()}
 let selected=null,selectedCell=null,history=[],drag=null;
+let managedCropSelection=''; // Vóór de eerste paint() initialiseren
 function ensureCatalog(){if(!Array.isArray(state.catalog))state.catalog=[];if(!Number.isInteger(state.nextCatalogId))state.nextCatalogId=1;for(const e of state.catalog){const n=Number(e.id);if(Number.isFinite(n)&&n>=state.nextCatalogId)state.nextCatalogId=n+1}}
 ensureCatalog();
 function applyCropOverrides(){for(const [id,def] of Object.entries(state.cropOverrides||{})){const n=Number(id);if(crops[n]&&def?.name&&def?.color)crops[n]=[def.name,def.color]}}
@@ -491,7 +492,6 @@ $('importRegister').onchange=async ev=>{const file=ev.target.files?.[0];if(!file
 
 
 // Versie 1.8.5: gewassen beheren met stabiele nummers (nooit indexen verschuiven).
-let managedCropSelection='';
 function renderCropManager(){
  const sel=$('manageCrop');if(!sel)return;
  const old=managedCropSelection||sel.value;

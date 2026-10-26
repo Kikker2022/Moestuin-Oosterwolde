@@ -371,7 +371,7 @@ function rotateSelected(degrees){
 }
 $('rotate').onclick=()=>rotateSelected(90);
 $('rotate45').onclick=()=>rotateSelected(-33);
-$('rotate15').onclick=()=>rotateSelected(-15);
+$('rotate15').onclick=()=>rotateSelected(-15);$('rotate7').onclick=()=>rotateSelected(-7.5);
 $('rotatePrevious').onclick=()=>undoGardenStep();
 $('objPerennial').onchange=()=>{const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const before=!!o.perennial,desired=$('objPerennial').checked;if(before===desired)return;const test={...o,perennial:desired};if(desired&&!fits(test)){notify('Kan niet vast worden: dit vak overlapt een vak uit een ander jaar.');$('objPerennial').checked=before;return}checkpoint();o.perennial=desired;if(desired)o.perennialSource=state.year;else{o.year=state.year;const source=String(o.perennialSource||o.year);if(o.sections?.[source]&&!o.sections[state.year])o.sections[state.year]=clone(o.sections[source]);}save();paint();notify(desired?'Vaste beplanting blijft zichtbaar in volgende jaren':'Vak hoort nu alleen bij '+state.year)};
 // De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.

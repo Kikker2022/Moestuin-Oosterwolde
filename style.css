@@ -108,3 +108,6 @@
 
 /* Versie 1.9.3 */
 .perennialOption{display:flex;align-items:center;gap:.5rem;margin:.75rem 0;padding:.7rem;border:1px solid #cad9c8;border-radius:8px;background:#f4f8f0;font-weight:500}.perennialOption input{width:1.2rem;height:1.2rem;flex:none}
+
+/* Kopieerknop duidelijk zichtbaar zonder geavanceerd menu */
+#copyBed{margin:.5rem 0 .15rem}

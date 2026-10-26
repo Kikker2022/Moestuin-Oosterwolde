@@ -303,6 +303,34 @@ $('simpleCreate').onclick=()=>{
  $('simpleBedForm').hidden=true;$('simplePerennial').checked=false;save();paint();notify('✓ '+crops[crop][0]+' geplaatst in tuingedeelte '+part);
 };
 $('addPath').onclick=()=>addObj('path');
+// Kopieer het geselecteerde groentevak met dezelfde afmetingen en teeltindeling.
+$('copyBed').onclick=()=>{
+ const source=state.objects.find(o=>o.id===selected&&o.type==='bed'&&visible(o));
+ if(!source){notify('Selecteer eerst een groentevak op de plattegrond');return}
+ const obj=clone(source);
+ obj.id=state.nextId;
+ // Een kopie hoort bij het huidige tuinjaar. Vaste beplanting wordt bewust
+ // niet automatisch overgenomen, zodat kopiëren geen extra vaste plant creëert.
+ obj.year=state.year;obj.perennial=false;obj.perennialSource=state.year;
+ const sourceRows=clone(sections(source));
+ obj.sections={[state.year]:sourceRows};
+ const d=dims(obj),x0=gardenSection(source)==='A'?.5:5.5;
+ const positions=[];
+ // Zoek dichtbij het origineel, maar uitsluitend in hetzelfde tuingedeelte.
+ for(let y=0;y<=state.length-d.h+.00001;y+=.1){
+  for(let x=x0;x<=x0+5-d.w+.00001;x+=.1){
+   positions.push({x:+x.toFixed(3),y:+y.toFixed(3),distance:(x-source.x)**2+(y-source.y)**2});
+  }
+ }
+ positions.sort((a,b)=>a.distance-b.distance);
+ let placed=false;
+ for(const pos of positions){obj.x=pos.x;obj.y=pos.y;if(fits(obj,null)){placed=true;break}}
+ if(!placed){notify('Geen vrije plek voor een kopie in tuingedeelte '+gardenSection(source)+'. Maak eerst ruimte.');return}
+ checkpoint();state.nextId++;state.objects.push(obj);
+ selected=obj.id;selectedCell=null;save();paint();
+ notify('✓ Vak gekopieerd. Sleep de kopie naar de gewenste plaats.');
+};
+
 // Draai rond het midden en zoek, indien nodig, een nabije geldige positie.
 // Vorige gebruikt dezelfde bewerkingsgeschiedenis als Ongedaan, maximaal 40 stappen.
 let previousRotation=null;

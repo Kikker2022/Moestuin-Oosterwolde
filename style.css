@@ -111,3 +111,8 @@
 
 /* Kopieerknop duidelijk zichtbaar zonder geavanceerd menu */
 #copyBed{margin:.5rem 0 .15rem}
+
+/* v1.9.5: compacte draaiknoppen op een rij, horizontaal scrollbaar op smalle schermen */
+.rotationButtons{display:flex;flex-wrap:nowrap;gap:5px;align-items:center;width:100%;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.rotationButtons button{flex:1 0 auto;min-height:36px;padding:7px 8px;font-size:.79rem;white-space:nowrap;border-radius:7px}
+@media(max-width:650px){.rotationButtons button{flex:0 0 auto;font-size:.75rem;padding:7px 7px}}

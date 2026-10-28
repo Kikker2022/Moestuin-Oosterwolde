@@ -116,3 +116,16 @@
 .rotationButtons{display:flex;flex-wrap:nowrap;gap:5px;align-items:center;width:100%;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
 .rotationButtons button{flex:1 0 auto;min-height:36px;padding:7px 8px;font-size:.79rem;white-space:nowrap;border-radius:7px}
 @media(max-width:650px){.rotationButtons button{flex:0 0 auto;font-size:.75rem;padding:7px 7px}}
+
+/* v1.9.6: eenvoudiger mobiele invoer en duidelijkere scrollbalk */
+.quickEdit{margin:12px 0;padding:14px;border:1px solid #b8cfb7;border-radius:12px;background:#f1f8ef;display:grid;gap:10px}
+.quickEdit[hidden]{display:none}
+.quickEdit h3{margin:0;font-size:1.08rem}
+.quickEdit label{display:grid;gap:5px;font-weight:600}
+.quickEdit input,.quickEdit select{box-sizing:border-box;width:100%;min-height:46px;font-size:16px}
+.quickEdit button,#advancedSave{min-height:46px}
+html{scrollbar-width:auto;scrollbar-color:#8b9f89 #e8eee6}
+::-webkit-scrollbar{width:15px;height:12px}
+::-webkit-scrollbar-thumb{background:#8b9f89;border:3px solid #e8eee6;border-radius:12px}
+::-webkit-scrollbar-track{background:#e8eee6}
+@media(max-width:640px){.quickEdit{padding:12px}::-webkit-scrollbar{width:17px}}

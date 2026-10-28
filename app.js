@@ -123,14 +123,22 @@ activeObjects().forEach(o=>{
     const w=!r.swapped?col.width:row.length;
     const h=!r.swapped?row.length:col.width;
     add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},shape);
-    // Versie 1.6.1: toon de volledige groentenaam, passend binnen het vak.
-    // Kleine vakjes houden hun kleur; de naam blijft via de editor beschikbaar.
-    const name=crop[0];
-    const fontSize=Math.min(.36,h*.48,(w*.88)/(Math.max(name.length,1)*.59));
-    if(fontSize>=.105 && h>=.24 && w>=.3){
-     const t=add('text',{x:x+w/2,y:y+h/2,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'600',fill:'#193b28','pointer-events':'none'},shape);
-     t.textContent=name;
-    }
+    // Naam en ras blijven ook in smalle stroken leesbaar: draai de tekst
+    // wanneer het vak hoger dan breed is. Bij weinig ruimte verklein de tekst.
+    const names=(col.varieties||[]).map(v=>v.name).filter(Boolean);
+    const customName=String(col.label||'').trim();
+    const line1=customName||crop[0];
+    const line2=names.length?names.join(', '):'';
+    const lines=[line1,...(line2?[line2]:[])];
+    const vertical=h>w*1.4;
+    const availW=vertical?h:w,availH=vertical?w:h;
+    const longest=Math.max(...lines.map(v=>v.length),1);
+    const fontSize=Math.max(.045,Math.min(.28,availH/(lines.length*1.4),availW/(longest*.57)));
+    const labelGroup=vertical?add('g',{transform:`translate(${x+w/2} ${y+h/2}) rotate(-90)`},shape):add('g',{transform:`translate(${x+w/2} ${y+h/2})`},shape);
+    lines.forEach((line,li)=>{
+      const text=add('text',{x:0,y:(li-(lines.length-1)/2)*fontSize*1.15,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'650',fill:'#173924','pointer-events':'none'},labelGroup);
+      text.textContent=line;
+    });
     across+=col.width;
    });
    along+=row.length;
@@ -155,6 +163,18 @@ function renderEditor(){
  $('editor').hidden=!o;$('editorEmpty').hidden=!!o;
  $('editTitle').textContent=o?(o.type==='bed'?`Tuingedeelte ${gardenSection(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
  if(!o)return;
+ const quick=$('quickEdit');quick.hidden=o.type!=='bed';
+ if(o.type==='bed'){
+   const loc=selectedCell||{i:0,j:0};
+   const cell=sections(o)[loc.i]?.cols[loc.j]||sections(o)[0]?.cols[0];
+   $('quickEditHelp').textContent=`Bewerk vak ${loc.i+1}.${loc.j+1} in deze strook. Tik op een ander vakje om dat te kiezen.`;
+   $('quickName').value=cell?.label||'';
+   const picker=$('quickCrop');picker.replaceChildren();
+   crops.forEach(([name],id)=>{if(!(state.hiddenCropIds||[]).includes(id)||id===cell?.crop)picker.append(new Option(name,String(id)))});
+   picker.value=String(cell?.crop||0);
+   $('quickVariety').value=(cell?.varieties||[]).map(v=>v.name).filter(Boolean).join(', ');
+   refreshQuickSuggestions();
+ }
  $('perennialEditorRow').hidden=o.type!=='bed';$('objPerennial').checked=!!o.perennial;
  for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).value=o[key];
  $('split').hidden=o.type!=='bed';if($('splitWidth'))$('splitWidth').hidden=o.type!=='bed';$('sectionsWrap').hidden=o.type!=='bed';
@@ -291,7 +311,9 @@ $('simpleCreate').onclick=()=>{
  if(!Number.isFinite(length)||!Number.isFinite(width)||length<.2||width<.2||length>state.length||width>5||!crops[crop]){alert('Controleer de afmetingen en kies een groente. Een vak mag maximaal 5 meter breed zijn.');return}
  const x0=part==='A'?.5:5.5;
  const obj={id:state.nextId,type:'bed',year:state.year,perennial:$('simplePerennial').checked,perennialSource:state.year,x:x0,y:0,length,width,rotation:0,sections:{}};
- obj.sections[state.year]=[{length,cols:[{crop,width,varieties:[]}]}];
+ const enteredVariety=$('simpleVariety').value.trim();
+ const enteredName=$('simpleName').value.trim();
+ obj.sections[state.year]=[{length,cols:[{crop,width,label:enteredName,varieties:enteredVariety?[newVariety(crop,enteredVariety)]:[]}]}];
  // Eenjarig: alleen dit jaar; vaste beplanting gebruikt steeds het bronjaar.
  let found=false;
  // Zoek op een raster van 10 cm, van boven naar beneden. Houd bestaande vakken intact.
@@ -300,7 +322,28 @@ $('simpleCreate').onclick=()=>{
  }
  if(!found){alert('Geen vrije ruimte gevonden in tuingedeelte '+part+'. Probeer een kleiner vak of verplaats eerst een bestaand vak.');return}
  checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;selectedCell={i:0,j:0};
- $('simpleBedForm').hidden=true;$('simplePerennial').checked=false;save();paint();notify('✓ '+crops[crop][0]+' geplaatst in tuingedeelte '+part);
+ $('simpleBedForm').hidden=true;$('simplePerennial').checked=false;$('simpleName').value='';$('simpleVariety').value='';save();paint();notify('✓ '+crops[crop][0]+' geplaatst in tuingedeelte '+part);
+};
+function refreshQuickSuggestions(){
+ const list=$('quickVarietySuggestions');if(!list)return;list.replaceChildren();
+ const crop=Number($('quickCrop').value);
+ const names=new Set();
+ (state.catalog||[]).filter(e=>Number(e.crop)===crop).forEach(e=>names.add(e.name));
+ (state.varieties||[]).filter(e=>Number(e.crop)===crop).forEach(e=>names.add(e.name));
+ names.forEach(name=>list.append(new Option(name)));
+}
+$('quickCrop').onchange=refreshQuickSuggestions;
+$('quickSave').onclick=()=>{
+ const o=state.objects.find(x=>x.id===selected&&x.type==='bed'&&visible(x));if(!o){notify('Selecteer eerst een groentevak');return}
+ const loc=selectedCell||{i:0,j:0};const cell=sections(o)[loc.i]?.cols[loc.j];if(!cell){notify('Selecteer een geldig vakje');return}
+ const crop=Number($('quickCrop').value),label=$('quickName').value.trim(),raw=$('quickVariety').value.trim();
+ if(!crops[crop]){notify('Kies een groente');return}
+ if(Number(cell.crop)!==crop&&(cell.varieties||[]).length&&!confirm('De bestaande rassen van dit vak vervangen?'))return;
+ const names=raw.split(',').map(x=>x.trim()).filter(Boolean);
+ const previous=Number(cell.crop)===crop?(cell.varieties||[]):[];
+ checkpoint();cell.crop=crop;cell.label=label;
+ cell.varieties=names.map(name=>previous.find(v=>v.name===name&&Number(v.crop)===crop)||newVariety(crop,name));
+ save();paint();notify('✓ Naam, groente en ras opgeslagen');
 };
 $('addPath').onclick=()=>addObj('path');
 // Kopieer het geselecteerde groentevak met dezelfde afmetingen en teeltindeling.
@@ -384,7 +427,14 @@ $('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth'
 }
 $('undo').onclick=undoGardenStep;
 
-for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).addEventListener('change',()=>{const v=Number($(id).value);if(!Number.isFinite(v)){paint();return}updateObj({[key]:v})});
+$('advancedSave').onclick=()=>{
+ const o=state.objects.find(x=>x.id===selected);if(!o)return;
+ const patch={length:Number($('objLength').value),width:Number($('objWidth').value),x:Number($('objX').value),y:Number($('objY').value)};
+ if(Object.values(patch).some(v=>!Number.isFinite(v))){notify('Controleer de ingevoerde getallen');return}
+ const test={...o,...patch};
+ if(patch.length<.2||patch.width<.2||!fits(test)){notify('Deze afmetingen of positie passen niet in de tuin');return}
+ updateObj(patch);notify('✓ Wijzigingen opgeslagen');
+};
 function resizeGarden(){const length=Number($('gardenLength').value),width=Number($('gardenWidth').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
 function syncInputs(){$('gardenLength').value=state.length;$('gardenWidth').value=state.width;$('year').value=state.year}
 $('gardenLength').onchange=resizeGarden;$('gardenWidth').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};

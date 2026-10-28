@@ -392,7 +392,7 @@ $('quickSave').onclick=()=>{
  const previous=Number(cell.crop)===crop?(cell.varieties||[]):[];
  checkpoint();cell.crop=crop;cell.label=label;
  cell.varieties=names.map(name=>previous.find(v=>v.name===name&&Number(v.crop)===crop)||newVariety(crop,name));
- save();paint();notify('✓ Naam, groente en ras opgeslagen');
+ save();paint();$('quickEdit').hidden=true;$('openQuickEdit').hidden=false;notify('✓ Opgeslagen. Het invoerblok is gesloten.');
 };
 $('addPath').onclick=()=>addObj('path');
 // Kopieer het geselecteerde groentevak met dezelfde afmetingen en teeltindeling.
@@ -482,7 +482,7 @@ $('advancedSave').onclick=()=>{
  if(Object.values(patch).some(v=>!Number.isFinite(v))){notify('Controleer de ingevoerde getallen');return}
  const test={...o,...patch};
  if(patch.length<.2||patch.width<.2||!fits(test)){notify('Deze afmetingen of positie passen niet in de tuin');return}
- updateObj(patch);notify('✓ Wijzigingen opgeslagen');
+ updateObj(patch);$('advancedTools').hidden=true;$('toggleAdvanced').setAttribute('aria-expanded','false');$('toggleAdvanced').textContent='⚙ Geavanceerd bewerken';notify('✓ Wijzigingen opgeslagen');
 };
 function resizeGarden(){const length=Number($('gardenLength').value),width=Number($('gardenWidth').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
 function syncInputs(){$('gardenLength').value=state.length;$('gardenWidth').value=state.width;$('year').value=state.year}
@@ -832,3 +832,6 @@ $('exportWorkbookResults').onclick=()=>$('exportWorkbook').click();
 document.addEventListener('pointerdown',event=>{const b=event.target.closest('button');if(b&&!b.disabled)b.classList.add('touchPressed')},true);
 for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>document.querySelectorAll('button.touchPressed').forEach(b=>b.classList.remove('touchPressed')),true);
 document.addEventListener('click',event=>{const b=event.target.closest('button');if(!b||b.disabled)return;b.classList.add('buttonAcknowledged');setTimeout(()=>b.classList.remove('buttonAcknowledged'),650)},true);
+
+// Versie 1.9.9: formulier na opslaan sluiten en op verzoek weer openen.
+$('openQuickEdit').onclick=()=>{$('quickEdit').hidden=false;$('openQuickEdit').hidden=true;$('quickEdit').scrollIntoView({behavior:'smooth',block:'nearest'})};

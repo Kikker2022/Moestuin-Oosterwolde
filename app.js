@@ -325,14 +325,38 @@ $('simpleCreate').onclick=()=>{
  $('simpleBedForm').hidden=true;$('simplePerennial').checked=false;$('simpleName').value='';$('simpleVariety').value='';save();paint();notify('✓ '+crops[crop][0]+' geplaatst in tuingedeelte '+part);
 };
 function refreshQuickSuggestions(){
- const list=$('quickVarietySuggestions');if(!list)return;list.replaceChildren();
+ const list=$('quickVarietySuggestions'),box=$('quickVarietyChoices');if(!list||!box)return;
+ list.replaceChildren();box.replaceChildren();
  const crop=Number($('quickCrop').value);
  const names=new Set();
  (state.catalog||[]).filter(e=>Number(e.crop)===crop).forEach(e=>names.add(e.name));
- (state.varieties||[]).filter(e=>Number(e.crop)===crop).forEach(e=>names.add(e.name));
- names.forEach(name=>list.append(new Option(name)));
+ availableVarieties(crop).forEach(n=>names.add(n));
+ const chosen=new Set($('quickVariety').value.split(',').map(x=>x.trim()).filter(Boolean));
+ const sorted=[...names].filter(Boolean).sort((a,b)=>a.localeCompare(b,'nl'));
+ const title=document.createElement('p');title.className='hint';title.textContent=sorted.length?'Vink hieronder de gewenste rassen aan:':'Nog geen ras voor dit gewas. Voeg hieronder direct een ras toe.';
+ box.append(title);
+ sorted.forEach(name=>{
+   list.append(new Option(name));
+   const label=document.createElement('label');label.className='varietyChoice';
+   const cb=document.createElement('input');cb.type='checkbox';cb.checked=chosen.has(name);
+   cb.onchange=()=>{
+     const picked=new Set($('quickVariety').value.split(',').map(x=>x.trim()).filter(Boolean));
+     if(cb.checked)picked.add(name);else picked.delete(name);
+     $('quickVariety').value=[...picked].join(', ');
+   };
+   label.append(cb,document.createTextNode(' '+name));box.append(label);
+ });
 }
-$('quickCrop').onchange=refreshQuickSuggestions;
+$('quickCrop').onchange=()=>{$('quickVariety').value='';refreshQuickSuggestions()};
+$('quickAddVariety').onclick=()=>{
+ const name=$('quickNewVariety').value.trim(),crop=Number($('quickCrop').value);
+ if(!name){notify('Typ eerst een rasnaam');return}
+ if(!crops[crop]){notify('Kies eerst een gewas');return}
+ checkpoint();addCustomVariety(crop,name);
+ const picked=new Set($('quickVariety').value.split(',').map(x=>x.trim()).filter(Boolean));picked.add(name);
+ $('quickVariety').value=[...picked].join(', ');$('quickNewVariety').value='';
+ save();refreshQuickSuggestions();notify('✓ Ras toegevoegd en aangevinkt');
+};
 $('quickSave').onclick=()=>{
  const o=state.objects.find(x=>x.id===selected&&x.type==='bed'&&visible(x));if(!o){notify('Selecteer eerst een groentevak');return}
  const loc=selectedCell||{i:0,j:0};const cell=sections(o)[loc.i]?.cols[loc.j];if(!cell){notify('Selecteer een geldig vakje');return}
@@ -469,6 +493,7 @@ function renderRegister(){
   const hay=[crops[e.cell.crop]?.[0],e.v.name,e.v.shop,e.v.notes].join(' ').toLocaleLowerCase('nl');
   return !search||hay.includes(search);
  });
+ entries.sort((a,b)=>(crops[a.cell.crop]?.[0]||'').localeCompare(crops[b.cell.crop]?.[0]||'','nl',{sensitivity:'base'})||String(a.v.name||'').localeCompare(String(b.v.name||''),'nl',{sensitivity:'base'}));
  if(!entries.length){const p=document.createElement('p');p.className='hint';p.textContent='Geen teeltgegevens gevonden voor deze selectie.';root.append(p);return}
  const summary=document.createElement('p');summary.className='hint';summary.textContent=`${entries.length} registratie(s) gevonden`;root.append(summary);
  const wrap=document.createElement('div');wrap.className='registerTableWrap';
@@ -524,12 +549,12 @@ $('exportRegister').onclick=()=>{
 // Versie 1.8: centrale lijst, onafhankelijk van de plattegrond.
 const catalogColumns=[['id','ID'],['crop','Gewas'],['name','Ras'],['shop','Leverancier'],['price','Prijs (€)'],['amount','Hoeveelheid'],['purchase','Aankoopdatum'],['notes','Opmerkingen']];
 let catalogEdit=null;
-function renderCatalog(){const root=$('catalogList');if(!root)return;ensureCatalog();root.replaceChildren();const filter=$('catalogCropFilter');if(filter.options.length!==crops.length)fillCropMenus();const q=$('catalogSearch').value.trim().toLocaleLowerCase('nl');const rows=state.catalog.filter(e=>(filter.value==='all'||String(e.crop)===filter.value)&&(!q||[crops[e.crop]?.[0],e.name,e.shop,e.notes].join(' ').toLocaleLowerCase('nl').includes(q)));const summary=document.createElement('p');summary.className='hint';summary.textContent=`${rows.length} soort(en) gevonden · ${state.catalog.length} totaal`;root.append(summary);const wrap=document.createElement('div');wrap.className='registerTableWrap';const table=document.createElement('table');table.className='registerTable catalogTable';const head=document.createElement('tr');[...catalogColumns.map(x=>x[1]),'Actie'].forEach(h=>{const th=document.createElement('th');th.textContent=h;head.append(th)});const thead=document.createElement('thead');thead.append(head);table.append(thead);const body=document.createElement('tbody');rows.forEach(e=>{const tr=document.createElement('tr');catalogColumns.forEach(([k])=>{const td=document.createElement('td');td.textContent=k==='crop'?(crops[e.crop]?.[0]||''):String(e[k]??'');tr.append(td)});const action=document.createElement('td');const edit=document.createElement('button');edit.className='smallButton secondary';edit.textContent='Bewerken';edit.onclick=()=>{catalogEdit=e.id;renderCatalog()};action.append(edit);const assign=document.createElement('button');assign.className='smallButton assignButton';assign.textContent='Toewijzen aan tuinvlak';assign.onclick=()=>{pendingAssignment=e.id;notify('Klik nu op een vak in de plattegrond');$('mapOuter').scrollIntoView({behavior:'smooth',block:'center'})};action.append(assign);tr.append(action);body.append(tr);if(catalogEdit===e.id){const detail=document.createElement('tr');const td=document.createElement('td');td.colSpan=catalogColumns.length+1;const form=document.createElement('div');form.className='registerEdit';const fields=document.createElement('div');fields.className='varietyFields';const draft={...e};for(const [k,label] of catalogColumns.filter(([k])=>k!=='id')){const lab=document.createElement('label');lab.textContent=label;let input;if(k==='crop'){input=document.createElement('select');cropNames().forEach(c=>input.append(new Option(c.name,String(c.id))))}else{input=document.createElement('input');input.type=k==='purchase'?'date':k==='price'?'number':'text';if(k==='price'){input.min='0';input.step='.01'}}input.value=draft[k]??'';input.oninput=()=>draft[k]=input.value;lab.append(input);fields.append(lab)}const saveBtn=document.createElement('button');saveBtn.textContent='✓ Opslaan';saveBtn.onclick=()=>{if(!draft.name?.trim()){alert('Vul een rasnaam in');return}checkpoint();Object.assign(e,draft,{crop:Number(draft.crop),name:draft.name.trim()});catalogEdit=null;save();paint()};const del=document.createElement('button');del.className='danger';del.textContent='Verwijderen';del.onclick=()=>{if(!confirm('Ras uit centrale lijst verwijderen? Reeds geregistreerde teelten blijven behouden.'))return;checkpoint();state.catalog=state.catalog.filter(x=>x.id!==e.id);catalogEdit=null;save();paint()};const buttons=document.createElement('div');buttons.className='toolbar';buttons.append(saveBtn,del);form.append(fields,buttons);td.append(form);detail.append(td);body.append(detail)}});table.append(body);wrap.append(table);root.append(wrap)}
+function renderCatalog(){const root=$('catalogList');if(!root)return;ensureCatalog();root.replaceChildren();const filter=$('catalogCropFilter');if(filter.options.length!==crops.length)fillCropMenus();const q=$('catalogSearch').value.trim().toLocaleLowerCase('nl');const rows=state.catalog.filter(e=>(filter.value==='all'||String(e.crop)===filter.value)&&(!q||[crops[e.crop]?.[0],e.name,e.shop,e.notes].join(' ').toLocaleLowerCase('nl').includes(q))).sort((a,b)=>(crops[a.crop]?.[0]||'').localeCompare(crops[b.crop]?.[0]||'','nl',{sensitivity:'base'})||String(a.name||'').localeCompare(String(b.name||''),'nl',{sensitivity:'base'}));const summary=document.createElement('p');summary.className='hint';summary.textContent=`${rows.length} soort(en) gevonden · ${state.catalog.length} totaal`;root.append(summary);const wrap=document.createElement('div');wrap.className='registerTableWrap';const table=document.createElement('table');table.className='registerTable catalogTable';const head=document.createElement('tr');[...catalogColumns.map(x=>x[1]),'Actie'].forEach(h=>{const th=document.createElement('th');th.textContent=h;head.append(th)});const thead=document.createElement('thead');thead.append(head);table.append(thead);const body=document.createElement('tbody');rows.forEach(e=>{const tr=document.createElement('tr');catalogColumns.forEach(([k])=>{const td=document.createElement('td');td.textContent=k==='crop'?(crops[e.crop]?.[0]||''):String(e[k]??'');tr.append(td)});const action=document.createElement('td');const edit=document.createElement('button');edit.className='smallButton secondary';edit.textContent='Bewerken';edit.onclick=()=>{catalogEdit=e.id;renderCatalog()};action.append(edit);const assign=document.createElement('button');assign.className='smallButton assignButton';assign.textContent='Toewijzen aan tuinvlak';assign.onclick=()=>{pendingAssignment=e.id;notify('Klik nu op een vak in de plattegrond');$('mapOuter').scrollIntoView({behavior:'smooth',block:'center'})};action.append(assign);tr.append(action);body.append(tr);if(catalogEdit===e.id){const detail=document.createElement('tr');const td=document.createElement('td');td.colSpan=catalogColumns.length+1;const form=document.createElement('div');form.className='registerEdit';const fields=document.createElement('div');fields.className='varietyFields';const draft={...e};for(const [k,label] of catalogColumns.filter(([k])=>k!=='id')){const lab=document.createElement('label');lab.textContent=label;let input;if(k==='crop'){input=document.createElement('select');cropNames().forEach(c=>input.append(new Option(c.name,String(c.id))))}else{input=document.createElement('input');input.type=k==='purchase'?'date':k==='price'?'number':'text';if(k==='price'){input.min='0';input.step='.01'}}input.value=draft[k]??'';input.oninput=()=>draft[k]=input.value;lab.append(input);fields.append(lab)}const saveBtn=document.createElement('button');saveBtn.textContent='✓ Opslaan';saveBtn.onclick=()=>{if(!draft.name?.trim()){alert('Vul een rasnaam in');return}checkpoint();Object.assign(e,draft,{crop:Number(draft.crop),name:draft.name.trim()});catalogEdit=null;save();paint()};const del=document.createElement('button');del.className='danger';del.textContent='Verwijderen';del.onclick=()=>{if(!confirm('Ras uit centrale lijst verwijderen? Reeds geregistreerde teelten blijven behouden.'))return;checkpoint();state.catalog=state.catalog.filter(x=>x.id!==e.id);catalogEdit=null;save();paint()};const buttons=document.createElement('div');buttons.className='toolbar';buttons.append(saveBtn,del);form.append(fields,buttons);td.append(form);detail.append(td);body.append(detail)}});table.append(body);wrap.append(table);root.append(wrap)}
 $('toggleCatalog').onclick=()=>{const c=$('catalogContent');c.hidden=!c.hidden;$('toggleCatalog').textContent=c.hidden?'📋 Open moestuinregister':'✕ Sluit moestuinregister';$('toggleCatalog').setAttribute('aria-expanded',String(!c.hidden));if(!c.hidden)renderCatalog()};
 $('catalogSearch').oninput=renderCatalog;$('catalogCropFilter').onchange=renderCatalog;
 let pendingAssignment=null;
 function fillCropMenus(){const filter=$('catalogCropFilter'),picker=$('newCatalogCrop');const old=filter.value;filter.replaceChildren(new Option('Alle gewassen','all'));picker.replaceChildren();cropNames().forEach(c=>{filter.append(new Option(c.name,String(c.id)));picker.append(new Option(c.name,String(c.id)))});filter.value=[...filter.options].some(o=>o.value===old)?old:'all'}
-$('catalogAdd').onclick=()=>{$('catalogNewForm').hidden=false;fillCropMenus();$('newCatalogName').focus()};
+$('catalogAdd').onclick=()=>{const chosen=$('catalogCropFilter').value;$('catalogNewForm').hidden=false;fillCropMenus();if(chosen!=='all'&&[...$('newCatalogCrop').options].some(o=>o.value===chosen))$('newCatalogCrop').value=chosen;$('newCatalogName').focus()};
 $('cancelCatalogNew').onclick=()=>{$('catalogNewForm').hidden=true};
 $('saveCatalogNew').onclick=()=>{const crop=Number($('newCatalogCrop').value),name=$('newCatalogName').value.trim();if(!crop||!name){alert('Kies een gewas en vul een rasnaam in.');return}checkpoint();ensureCatalog();const entry={id:state.nextCatalogId++,crop,name,shop:'',price:'',amount:'',purchase:'',notes:''};state.catalog.push(entry);catalogEdit=entry.id;$('catalogNewForm').hidden=true;$('newCatalogName').value='';save();paint()};
 $('addCrop').onclick=()=>createManagedCrop();
@@ -761,3 +786,8 @@ $('cropRemove').onclick=()=>{
  managedCropSelection='';save();fillCropMenus();paint();notify('✓ Gewas verwijderd uit de keuzelijsten');
 };
 $('exportWorkbookResults').onclick=()=>$('exportWorkbook').click();
+
+// Versie 1.9.7: zichtbare bevestiging van aanrakingen op mobiele apparaten.
+document.addEventListener('pointerdown',event=>{const b=event.target.closest('button');if(b&&!b.disabled)b.classList.add('touchPressed')},true);
+for(const type of ['pointerup','pointercancel'])document.addEventListener(type,()=>document.querySelectorAll('button.touchPressed').forEach(b=>b.classList.remove('touchPressed')),true);
+document.addEventListener('click',event=>{const b=event.target.closest('button');if(!b||b.disabled)return;b.classList.add('buttonAcknowledged');setTimeout(()=>b.classList.remove('buttonAcknowledged'),650)},true);

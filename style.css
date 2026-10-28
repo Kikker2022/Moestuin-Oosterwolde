@@ -137,3 +137,11 @@ button.buttonAcknowledged{outline:3px solid #e4ad37;outline-offset:2px}
 .varietyChoices{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px;max-height:240px;overflow-y:auto}
 .varietyChoice{display:flex;align-items:center;gap:7px;border:1px solid #b9d4c0;border-radius:9px;padding:9px 12px;background:#f5faf5;min-height:42px}
 .varietyChoice input{width:20px;height:20px;accent-color:#35764c}
+
+/* Versie 1.9.8: eenvoudige raskeuze */
+.quickRasBlock{margin:10px 0 14px;padding:10px;border:1px solid #bfd8c4;border-radius:12px;background:#f7fbf7}
+.quickRasHeading{font-weight:700;margin-bottom:7px}
+.rasModeButtons{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.rasModeButtons button,.smallGreenButton{background:#e4f3e7;color:#1c6034;border:1px solid #8cb79a;border-radius:9px;padding:7px 11px;font-size:.9rem;font-weight:600;min-height:38px}
+.rasModeButtons button.active{background:#287443;color:white;border-color:#287443}
+.quickRasBlock [hidden]{display:none!important}

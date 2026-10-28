@@ -173,7 +173,8 @@ function renderEditor(){
    crops.forEach(([name],id)=>{if(!(state.hiddenCropIds||[]).includes(id)||id===cell?.crop)picker.append(new Option(name,String(id)))});
    picker.value=String(cell?.crop||0);
    $('quickVariety').value=(cell?.varieties||[]).map(v=>v.name).filter(Boolean).join(', ');
-   refreshQuickSuggestions();
+   quickSelectedVarieties=new Set((cell?.varieties||[]).map(v=>v.name).filter(Boolean));
+   setQuickRasMode('existing');refreshQuickSuggestions();
  }
  $('perennialEditorRow').hidden=o.type!=='bed';$('objPerennial').checked=!!o.perennial;
  for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).value=o[key];
@@ -331,7 +332,7 @@ function refreshQuickSuggestions(){
  const names=new Set();
  (state.catalog||[]).filter(e=>Number(e.crop)===crop).forEach(e=>names.add(e.name));
  availableVarieties(crop).forEach(n=>names.add(n));
- const chosen=new Set($('quickVariety').value.split(',').map(x=>x.trim()).filter(Boolean));
+ const chosen=quickSelectedVarieties;
  const sorted=[...names].filter(Boolean).sort((a,b)=>a.localeCompare(b,'nl'));
  const title=document.createElement('p');title.className='hint';title.textContent=sorted.length?'Vink hieronder de gewenste rassen aan:':'Nog geen ras voor dit gewas. Voeg hieronder direct een ras toe.';
  box.append(title);
@@ -340,22 +341,46 @@ function refreshQuickSuggestions(){
    const label=document.createElement('label');label.className='varietyChoice';
    const cb=document.createElement('input');cb.type='checkbox';cb.checked=chosen.has(name);
    cb.onchange=()=>{
-     const picked=new Set($('quickVariety').value.split(',').map(x=>x.trim()).filter(Boolean));
-     if(cb.checked)picked.add(name);else picked.delete(name);
-     $('quickVariety').value=[...picked].join(', ');
+     if(cb.checked)quickSelectedVarieties.add(name);else quickSelectedVarieties.delete(name);
+     $('quickVariety').value=[...quickSelectedVarieties].join(', ');
    };
    label.append(cb,document.createTextNode(' '+name));box.append(label);
  });
 }
-$('quickCrop').onchange=()=>{$('quickVariety').value='';refreshQuickSuggestions()};
+let quickRasMode='existing';
+let quickSelectedVarieties=new Set();
+let quickPendingRegistration=false;
+function setQuickRasMode(mode){
+ quickRasMode=mode;
+ $('quickExistingPanel').hidden=mode!=='existing';
+ $('quickTypingPanel').hidden=mode!=='typing';
+ $('quickExistingMode').classList.toggle('active',mode==='existing');
+ $('quickTypingMode').classList.toggle('active',mode==='typing');
+ $('quickExistingMode').setAttribute('aria-pressed',String(mode==='existing'));
+ $('quickTypingMode').setAttribute('aria-pressed',String(mode==='typing'));
+}
+$('quickExistingMode').onclick=()=>setQuickRasMode('existing');
+$('quickTypingMode').onclick=()=>setQuickRasMode('typing');
+$('quickCrop').onchange=()=>{
+ quickSelectedVarieties.clear();$('quickVariety').value='';
+ setQuickRasMode('existing');refreshQuickSuggestions();
+};
 $('quickAddVariety').onclick=()=>{
- const name=$('quickNewVariety').value.trim(),crop=Number($('quickCrop').value);
- if(!name){notify('Typ eerst een rasnaam');return}
+ const crop=Number($('quickCrop').value);
  if(!crops[crop]){notify('Kies eerst een gewas');return}
- checkpoint();addCustomVariety(crop,name);
- const picked=new Set($('quickVariety').value.split(',').map(x=>x.trim()).filter(Boolean));picked.add(name);
- $('quickVariety').value=[...picked].join(', ');$('quickNewVariety').value='';
- save();refreshQuickSuggestions();notify('✓ Ras toegevoegd en aangevinkt');
+ // Het bestaande centrale invoerformulier wordt gebruikt, zodat het ras
+ // in het register terechtkomt en daarna automatisch in de strooklijst.
+ quickPendingRegistration=true;
+ $('catalogContent').hidden=false;
+ $('toggleCatalog').textContent='✕ Sluit moestuinregister';
+ $('toggleCatalog').setAttribute('aria-expanded','true');
+ $('catalogNewForm').hidden=false;
+ fillCropMenus();
+ $('catalogCropFilter').value=String(crop);
+ $('newCatalogCrop').value=String(crop);
+ $('catalogPanel').scrollIntoView({behavior:'smooth',block:'start'});
+ $('newCatalogName').focus({preventScroll:true});
+ notify('Vul het nieuwe ras in en klik op Ras toevoegen');
 };
 $('quickSave').onclick=()=>{
  const o=state.objects.find(x=>x.id===selected&&x.type==='bed'&&visible(x));if(!o){notify('Selecteer eerst een groentevak');return}
@@ -363,7 +388,7 @@ $('quickSave').onclick=()=>{
  const crop=Number($('quickCrop').value),label=$('quickName').value.trim(),raw=$('quickVariety').value.trim();
  if(!crops[crop]){notify('Kies een groente');return}
  if(Number(cell.crop)!==crop&&(cell.varieties||[]).length&&!confirm('De bestaande rassen van dit vak vervangen?'))return;
- const names=raw.split(',').map(x=>x.trim()).filter(Boolean);
+ const names=quickRasMode==='existing'?[...quickSelectedVarieties]:raw.split(',').map(x=>x.trim()).filter(Boolean);
  const previous=Number(cell.crop)===crop?(cell.varieties||[]):[];
  checkpoint();cell.crop=crop;cell.label=label;
  cell.varieties=names.map(name=>previous.find(v=>v.name===name&&Number(v.crop)===crop)||newVariety(crop,name));
@@ -555,8 +580,24 @@ $('catalogSearch').oninput=renderCatalog;$('catalogCropFilter').onchange=renderC
 let pendingAssignment=null;
 function fillCropMenus(){const filter=$('catalogCropFilter'),picker=$('newCatalogCrop');const old=filter.value;filter.replaceChildren(new Option('Alle gewassen','all'));picker.replaceChildren();cropNames().forEach(c=>{filter.append(new Option(c.name,String(c.id)));picker.append(new Option(c.name,String(c.id)))});filter.value=[...filter.options].some(o=>o.value===old)?old:'all'}
 $('catalogAdd').onclick=()=>{const chosen=$('catalogCropFilter').value;$('catalogNewForm').hidden=false;fillCropMenus();if(chosen!=='all'&&[...$('newCatalogCrop').options].some(o=>o.value===chosen))$('newCatalogCrop').value=chosen;$('newCatalogName').focus()};
-$('cancelCatalogNew').onclick=()=>{$('catalogNewForm').hidden=true};
-$('saveCatalogNew').onclick=()=>{const crop=Number($('newCatalogCrop').value),name=$('newCatalogName').value.trim();if(!crop||!name){alert('Kies een gewas en vul een rasnaam in.');return}checkpoint();ensureCatalog();const entry={id:state.nextCatalogId++,crop,name,shop:'',price:'',amount:'',purchase:'',notes:''};state.catalog.push(entry);catalogEdit=entry.id;$('catalogNewForm').hidden=true;$('newCatalogName').value='';save();paint()};
+$('cancelCatalogNew').onclick=()=>{$('catalogNewForm').hidden=true;quickPendingRegistration=false};
+$('saveCatalogNew').onclick=()=>{const crop=Number($('newCatalogCrop').value),name=$('newCatalogName').value.trim();if(!crop||!name){alert('Kies een gewas en vul een rasnaam in.');return}checkpoint();ensureCatalog();const entry={id:state.nextCatalogId++,crop,name,shop:'',price:'',amount:'',purchase:'',notes:''};state.catalog.push(entry);catalogEdit=entry.id;$('catalogNewForm').hidden=true;$('newCatalogName').value='';
+ addCustomVariety(crop,name);
+ const fromQuick=quickPendingRegistration;
+ if(quickPendingRegistration){
+   quickPendingRegistration=false;
+   $('quickCrop').value=String(crop);
+   quickSelectedVarieties.add(name);
+   setQuickRasMode('existing');
+ }
+ save();paint();
+ if(fromQuick){
+   quickSelectedVarieties.add(name);
+   $('quickVariety').value=[...quickSelectedVarieties].join(', ');
+   setQuickRasMode('existing');refreshQuickSuggestions();
+   $('quickEdit').scrollIntoView({behavior:'smooth',block:'center'});
+   notify('✓ Nieuw ras geregistreerd en aangevinkt. Klik op Opslaan om het in de strook te zetten.');
+ }};
 $('addCrop').onclick=()=>createManagedCrop();
 function assignCatalogToCell(id,obj,i,j){const e=state.catalog.find(x=>String(x.id)===String(id));if(!e||!obj||obj.type!=='bed')return;const cell=sections(obj)[i]?.cols[j];if(!cell)return;if(cellVarieties(cell).length&&Number(cell.crop)!==Number(e.crop)&&!confirm('Dit vak bevat andere teeltgegevens. Deze vervangen?'))return;checkpoint();if(Number(cell.crop)!==Number(e.crop)){cell.crop=Number(e.crop);cell.varieties=[]}cell.varieties??=[];if(cell.varieties.some(v=>String(v.catalogId)===String(e.id))){notify('Dit ras staat al in dit vak');return}const v=newVariety(e.crop,e.name);Object.assign(v,{catalogId:e.id,shop:e.shop||'',price:e.price||'',amount:e.amount||''});cell.varieties.push(v);pendingAssignment=null;save();paint();notify('✓ Ras aan tuinvlak toegewezen')}
 function downloadCsv(rows,filename){const esc=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,m=>"'"+m)+'"';const csv='\uFEFF'+rows.map(r=>r.map(esc).join(';')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}

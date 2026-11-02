@@ -162,3 +162,13 @@ main,.panel{overflow:visible}
 /* Versie 2.0.1: horizontaal scrollen naast verticaal schuiven. */
 #gardenScrollHorizontal{flex:1 1 130px;min-width:110px;accent-color:#387448;touch-action:pan-x}
 #gardenScrollHorizontal:disabled{opacity:.4}
+
+/* Versie 2.0.2 */
+.horizontalScrollRow{display:flex;align-items:center;gap:9px;min-width:0;width:100%;flex:1 1 100%}
+.horizontalScrollRow input[type=range]{flex:1 1 auto;min-width:80px;width:100%;touch-action:pan-x}
+.scrollSide{font-size:.85rem;font-weight:700;white-space:nowrap;color:#255a37}
+.sectionCollapseButton{display:block;width:100%;min-height:48px;padding:12px 15px;text-align:left;border-radius:10px;background:#287844;color:#fff;border:1px solid #1c5a33;font-weight:700;font-size:1rem}
+.sectionCollapseButton:active{background:#174a2c}
+.advancedGreenButton{background:#174f30;border-color:#123d25}
+#myGardenContent,#cloudPanelContent,#meterContent{padding-top:12px}
+#myGardenContent[hidden],#cloudPanelContent[hidden],#meterContent[hidden]{display:none!important}

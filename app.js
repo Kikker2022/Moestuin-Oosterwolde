@@ -41,11 +41,20 @@ function storeHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(hist
 function updateUndo(){$('undo').disabled=!history.length;if($('rotatePrevious'))$('rotatePrevious').disabled=!history.length}
 
 let mapZoom=100;
-function applyZoom(){const map=$('map');map.style.width=mapZoom+'%';$('mapZoom').value=mapZoom;$('zoomValue').textContent=mapZoom+'%';requestAnimationFrame(()=>{if(typeof syncHorizontalSlider==='function')syncHorizontalSlider()})}
+function applyZoom(){
+ const map=$('map');
+ // Bij 100% is de kaart bewust breder dan het venster, zodat links/rechts schuiven werkt.
+ // Bij 50% past de volledige breedte weer in het venster.
+ map.style.minWidth='0';
+ map.style.width=(mapZoom*1.65)+'%';
+ $('mapZoom').value=mapZoom;
+ $('zoomValue').textContent=mapZoom+'%';
+ requestAnimationFrame(()=>{if(typeof syncHorizontalSlider==='function')syncHorizontalSlider()});
+}
 $('mapZoom').addEventListener('input',e=>{mapZoom=Number(e.target.value);applyZoom()});
 $('zoomOut').onclick=()=>{mapZoom=Math.max(50,mapZoom-25);applyZoom()};
 $('zoomReset').onclick=()=>{mapZoom=100;applyZoom();$('mapOuter').scrollTo(0,0)};
-$('zoomIn').onclick=()=>{mapZoom=Math.min(400,mapZoom+25);applyZoom()};
+$('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+25);applyZoom()};
 const visible=o=>o.type==='path'||o.perennial||!o.year||o.year===state.year;
 const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
@@ -864,11 +873,10 @@ $('gardenScrollUp').onclick=()=>gardenScroller.scrollBy({top:-Math.max(150,garde
 $('gardenScrollDown').onclick=()=>gardenScroller.scrollBy({top:Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
 const gardenHorizontal=$('gardenScrollHorizontal');
 function ensureHorizontalRoom(){
+ // De zoom bepaalt de werkelijke SVG-breedte. Geen minimum van 560px:
+ // dat blokkeerde het verkleinen van de plattegrond.
  const map=$('map');
- // Het SVG mag breder zijn dan de zichtbare uitsnede, ook bij zoom 50–100%.
- // Anders is scrollWidth == clientWidth en heeft de schuifregelaar geen effect.
- const width=Math.max(gardenScroller.clientWidth*1.65,560);
- map.style.minWidth=Math.ceil(width)+'px';
+ map.style.minWidth='0';
 }
 function syncHorizontalSlider(){
  ensureHorizontalRoom();

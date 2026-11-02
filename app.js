@@ -668,7 +668,15 @@ window.gardenReceiveCloud=function(incoming){
    ref=db.ref('tuinplannen/'+user.uid);$('cloudUseOnline').hidden=false;say('Online tuinplan controleren…');
    try{const snap=await ref.once('value');const rec=snap.val();
      if(rec&&valid(rec.plan)){
-       if(same(rec.plan,window.gardenGetState())){lastRemote=rec.plan;listen();return}
+       if(same(rec.plan,window.gardenGetState())){
+         // Ook bij identieke plannen het keuzescherm laten zien.
+         // Geen automatische overschrijving of verborgen keuze.
+         lastRemote=rec.plan;
+         $('cloudChoices').hidden=false;
+         $('cloudUseOnline').hidden=false;
+         say('Beide tuinplannen zijn gelijk. Je kunt kiezen welk plan je wilt gebruiken of dit venster sluiten.');
+         return;
+       }
        $('cloudChoices').hidden=false;say('Er staat al een ander tuinplan online. Kies welk plan je wilt gebruiken.');
      }else{$('cloudChoices').hidden=false;$('cloudUseOnline').hidden=true;say('Online staat nog geen tuinplan. Kies “Dit apparaat online zetten”.')}
    }catch(e){say('Online controleren mislukt: '+e.message)}

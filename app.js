@@ -855,8 +855,20 @@ gardenSlider.addEventListener('input',()=>{const range=Math.max(0,gardenScroller
 $('gardenScrollUp').onclick=()=>gardenScroller.scrollBy({top:-Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
 $('gardenScrollDown').onclick=()=>gardenScroller.scrollBy({top:Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
 const gardenHorizontal=$('gardenScrollHorizontal');
-function syncHorizontalSlider(){const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);gardenHorizontal.value=range?Math.round(gardenScroller.scrollLeft/range*100):0;gardenHorizontal.disabled=!range}
-gardenHorizontal.oninput=()=>{const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);gardenScroller.scrollLeft=range*Number(gardenHorizontal.value)/100};
+function ensureHorizontalRoom(){
+ const map=$('map');
+ // Het SVG mag breder zijn dan de zichtbare uitsnede, ook bij zoom 50–100%.
+ // Anders is scrollWidth == clientWidth en heeft de schuifregelaar geen effect.
+ const width=Math.max(gardenScroller.clientWidth*1.65,560);
+ map.style.minWidth=Math.ceil(width)+'px';
+}
+function syncHorizontalSlider(){
+ ensureHorizontalRoom();
+ const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);
+ gardenHorizontal.disabled=false;
+ gardenHorizontal.value=range?Math.round(gardenScroller.scrollLeft/range*100):0;
+}
+gardenHorizontal.oninput=()=>{ensureHorizontalRoom();const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);gardenScroller.scrollLeft=range*Number(gardenHorizontal.value)/100};
 gardenScroller.addEventListener('scroll',syncHorizontalSlider,{passive:true});
 window.addEventListener('resize',syncHorizontalSlider);
 if(typeof ResizeObserver!=='undefined')new ResizeObserver(syncHorizontalSlider).observe(gardenScroller);

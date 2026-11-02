@@ -177,7 +177,7 @@ function renderEditor(){
    setQuickRasMode('existing');refreshQuickSuggestions();
  }
  $('perennialEditorRow').hidden=o.type!=='bed';$('objPerennial').checked=!!o.perennial;
- for(const [id,key] of [['objLength','length'],['objWidth','width'],['objX','x'],['objY','y']])$(id).value=o[key];
+ for(const [id,key] of [['objWidth','length'],['objLength','width'],['objX','x'],['objY','y']])$(id).value=o[key];
  $('split').hidden=o.type!=='bed';if($('splitWidth'))$('splitWidth').hidden=o.type!=='bed';$('sectionsWrap').hidden=o.type!=='bed';
  $('sections').replaceChildren();
   if(o.type==='bed'&&!selectedCell){const tip=document.createElement('p');tip.className='hint';tip.textContent='Kies hieronder bij het juiste vak “Teeltgegevens openen”. Je ziet dan alleen de rassen van dat vak.';$('sections').append(tip)}
@@ -308,7 +308,7 @@ $('addBed').onclick=()=>{refreshSimpleCrops();$('simpleBedForm').hidden=false;$(
 $('simpleCancel').onclick=()=>{$('simpleBedForm').hidden=true};
 $('toggleAdvanced').onclick=()=>{const area=$('advancedTools');area.hidden=!area.hidden;$('toggleAdvanced').setAttribute('aria-expanded',String(!area.hidden));$('toggleAdvanced').textContent=area.hidden?'⚙ Geavanceerd bewerken':'⚙ Geavanceerd sluiten'};
 $('simpleCreate').onclick=()=>{
- const part=$('simpleSection').value,crop=Number($('simpleCrop').value),length=Number($('simpleLength').value),width=Number($('simpleWidth').value);
+ const part=$('simpleSection').value,crop=Number($('simpleCrop').value),length=Number($('simpleWidth').value),width=Number($('simpleLength').value);
  if(!Number.isFinite(length)||!Number.isFinite(width)||length<.2||width<.2||length>state.length||width>5||!crops[crop]){alert('Controleer de afmetingen en kies een groente. Een vak mag maximaal 5 meter breed zijn.');return}
  const x0=part==='A'?.5:5.5;
  const obj={id:state.nextId,type:'bed',year:state.year,perennial:$('simplePerennial').checked,perennialSource:state.year,x:x0,y:0,length,width,rotation:0,sections:{}};
@@ -397,7 +397,7 @@ $('quickSave').onclick=()=>{
 $('addPath').onclick=()=>{$('simplePathForm').hidden=false;$('simplePathForm').scrollIntoView({behavior:'smooth',block:'center'})};
 $('pathCancel').onclick=()=>{$('simplePathForm').hidden=true};
 $('pathCreate').onclick=()=>{
- const length=Number($('pathLength').value),width=Number($('pathWidth').value);
+ const length=Number($('pathWidth').value),width=Number($('pathLength').value);
  if(!Number.isFinite(length)||!Number.isFinite(width)||length<.2||width<.2||length>state.length||width>10){notify('Vul geldige afmetingen in (minimaal 0,2 meter)');return}
  const obj={id:state.nextId,type:'path',year:null,x:.5,y:0,length,width,rotation:0};
  let found=false;
@@ -489,15 +489,15 @@ $('undo').onclick=undoGardenStep;
 
 $('advancedSave').onclick=()=>{
  const o=state.objects.find(x=>x.id===selected);if(!o)return;
- const patch={length:Number($('objLength').value),width:Number($('objWidth').value),x:Number($('objX').value),y:Number($('objY').value)};
+ const patch={length:Number($('objWidth').value),width:Number($('objLength').value),x:Number($('objX').value),y:Number($('objY').value)};
  if(Object.values(patch).some(v=>!Number.isFinite(v))){notify('Controleer de ingevoerde getallen');return}
  const test={...o,...patch};
  if(patch.length<.2||patch.width<.2||!fits(test)){notify('Deze afmetingen of positie passen niet in de tuin');return}
  updateObj(patch);$('advancedTools').hidden=true;$('toggleAdvanced').setAttribute('aria-expanded','false');$('toggleAdvanced').textContent='⚙ Geavanceerd bewerken';notify('✓ Wijzigingen opgeslagen');
 };
-function resizeGarden(){const length=Number($('gardenLength').value),width=Number($('gardenWidth').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
-function syncInputs(){$('gardenLength').value=state.length;$('gardenWidth').value=state.width;$('year').value=state.year}
-$('gardenLength').onchange=resizeGarden;$('gardenWidth').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};
+function resizeGarden(){const length=Number($('gardenWidth').value),width=Number($('gardenLength').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
+function syncInputs(){$('gardenWidth').value=state.length;$('gardenLength').value=state.width;$('year').value=state.year}
+$('gardenWidth').onchange=resizeGarden;$('gardenLength').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};
 const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clientX;p.y=evt.clientY;const matrix=svg.getScreenCTM();if(!matrix)return null;const q=p.matrixTransform(matrix.inverse());return{x:q.x-1,y:q.y-1}}
 svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{if(!drag)return;const p=point(e);const o=state.objects.find(x=>x.id===drag.id);if(!p||!o)return;const dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.abs(dx)+Math.abs(dy)>.08)drag.moved=true;const nx=Math.round((drag.x+dx)*10)/10,ny=Math.round((drag.y+dy)*10)/10;const test={...o,x:nx,y:ny};if(fits(test)){o.x=nx;o.y=ny;paint()}});function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
@@ -854,4 +854,10 @@ gardenScroller.addEventListener('scroll',syncGardenSlider,{passive:true});
 gardenSlider.addEventListener('input',()=>{const range=Math.max(0,gardenScroller.scrollHeight-gardenScroller.clientHeight);gardenScroller.scrollTop=range*Number(gardenSlider.value)/100});
 $('gardenScrollUp').onclick=()=>gardenScroller.scrollBy({top:-Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
 $('gardenScrollDown').onclick=()=>gardenScroller.scrollBy({top:Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
-$('gardenScrollBottom').onclick=()=>gardenScroller.scrollTo({top:gardenScroller.scrollHeight,behavior:'smooth'});
+const gardenHorizontal=$('gardenScrollHorizontal');
+function syncHorizontalSlider(){const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);gardenHorizontal.value=range?Math.round(gardenScroller.scrollLeft/range*100):0;gardenHorizontal.disabled=!range}
+gardenHorizontal.oninput=()=>{const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);gardenScroller.scrollLeft=range*Number(gardenHorizontal.value)/100};
+gardenScroller.addEventListener('scroll',syncHorizontalSlider,{passive:true});
+window.addEventListener('resize',syncHorizontalSlider);
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(syncHorizontalSlider).observe(gardenScroller);
+requestAnimationFrame(syncHorizontalSlider);

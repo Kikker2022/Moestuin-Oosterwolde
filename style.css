@@ -179,3 +179,17 @@ main,.panel{overflow:visible}
 .darkGreenSection{width:100%!important;max-width:none!important;min-height:48px;background:#174f30!important;color:white!important;text-align:left!important;border-radius:10px;font-weight:700}
 .darkGreenAction{background:#174f30!important;color:#fff!important;border:1px solid #123d25!important;font-weight:700}
 .darkGreenAction:active,.darkGreenSection:active{background:#0c321d!important}
+
+/* Versie 2.0.4: vaste horizontale scrollruimte, ook op grotere telefoons. */
+#mapOuter{overflow-x:scroll!important;overflow-y:auto}
+#map{max-width:none!important;flex-shrink:0}
+#gardenScrollHorizontal{touch-action:pan-x;accent-color:#287844}
+#toggleAdvanced,#toggleCatalog,#toggleLegend,#toggleMyGarden,
+#toggleCloudPanel,#toggleMeters,#addPath,#undo{
+ background:#287844!important;
+ border-color:#216538!important;
+ color:#fff!important;
+}
+#toggleAdvanced:active,#toggleCatalog:active,#toggleLegend:active,
+#toggleMyGarden:active,#toggleCloudPanel:active,#toggleMeters:active,
+#addPath:active,#undo:active{background:#216538!important}

@@ -394,33 +394,44 @@ $('quickSave').onclick=()=>{
  cell.varieties=names.map(name=>previous.find(v=>v.name===name&&Number(v.crop)===crop)||newVariety(crop,name));
  save();paint();$('quickEdit').hidden=true;$('openQuickEdit').hidden=false;notify('✓ Opgeslagen. Het invoerblok is gesloten.');
 };
-$('addPath').onclick=()=>addObj('path');
+$('addPath').onclick=()=>{$('simplePathForm').hidden=false;$('simplePathForm').scrollIntoView({behavior:'smooth',block:'center'})};
+$('pathCancel').onclick=()=>{$('simplePathForm').hidden=true};
+$('pathCreate').onclick=()=>{
+ const length=Number($('pathLength').value),width=Number($('pathWidth').value);
+ if(!Number.isFinite(length)||!Number.isFinite(width)||length<.2||width<.2||length>state.length||width>10){notify('Vul geldige afmetingen in (minimaal 0,2 meter)');return}
+ const obj={id:state.nextId,type:'path',year:null,x:.5,y:0,length,width,rotation:0};
+ let found=false;
+ for(let y=0;y<=state.length-length+.00001&&!found;y+=.1){
+  for(let x=.5;x<=10.5-width+.00001;x+=.1){obj.x=+x.toFixed(3);obj.y=+y.toFixed(3);if(fits(obj,null)){found=true;break}}
+ }
+ if(!found){notify('Geen vrije plek voor dit looppad. Probeer kleinere afmetingen.');return}
+ checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;selectedCell=null;
+ $('simplePathForm').hidden=true;save();paint();notify('✓ Looppad geplaatst. Selecteer het om te kopiëren.');
+};
 // Kopieer het geselecteerde groentevak met dezelfde afmetingen en teeltindeling.
 $('copyBed').onclick=()=>{
- const source=state.objects.find(o=>o.id===selected&&o.type==='bed'&&visible(o));
- if(!source){notify('Selecteer eerst een groentevak op de plattegrond');return}
+ const source=state.objects.find(o=>o.id===selected&&visible(o));
+ if(!source){notify('Selecteer eerst een groentevak of looppad op de plattegrond');return}
  const obj=clone(source);
  obj.id=state.nextId;
  // Een kopie hoort bij het huidige tuinjaar. Vaste beplanting wordt bewust
  // niet automatisch overgenomen, zodat kopiëren geen extra vaste plant creëert.
- obj.year=state.year;obj.perennial=false;obj.perennialSource=state.year;
- const sourceRows=clone(sections(source));
- obj.sections={[state.year]:sourceRows};
- const d=dims(obj),x0=gardenSection(source)==='A'?.5:5.5;
+ if(source.type==='bed'){obj.year=state.year;obj.perennial=false;obj.perennialSource=state.year;const sourceRows=clone(sections(source));obj.sections={[state.year]:sourceRows};}
+ const d=dims(obj),x0=source.type==='path'?.5:(gardenSection(source)==='A'?.5:5.5),availableWidth=source.type==='path'?10:5;
  const positions=[];
  // Zoek dichtbij het origineel, maar uitsluitend in hetzelfde tuingedeelte.
  for(let y=0;y<=state.length-d.h+.00001;y+=.1){
-  for(let x=x0;x<=x0+5-d.w+.00001;x+=.1){
+  for(let x=x0;x<=x0+availableWidth-d.w+.00001;x+=.1){
    positions.push({x:+x.toFixed(3),y:+y.toFixed(3),distance:(x-source.x)**2+(y-source.y)**2});
   }
  }
  positions.sort((a,b)=>a.distance-b.distance);
  let placed=false;
  for(const pos of positions){obj.x=pos.x;obj.y=pos.y;if(fits(obj,null)){placed=true;break}}
- if(!placed){notify('Geen vrije plek voor een kopie in tuingedeelte '+gardenSection(source)+'. Maak eerst ruimte.');return}
+ if(!placed){notify('Geen vrije plek voor een kopie. Maak eerst ruimte of verklein het object.');return}
  checkpoint();state.nextId++;state.objects.push(obj);
  selected=obj.id;selectedCell=null;save();paint();
- notify('✓ Vak gekopieerd. Sleep de kopie naar de gewenste plaats.');
+ notify('✓ '+(source.type==='path'?'Looppad':'Groentevak')+' gekopieerd. Sleep de kopie naar de gewenste plaats.');
 };
 
 // Draai rond het midden en zoek, indien nodig, een nabije geldige positie.
@@ -835,3 +846,12 @@ document.addEventListener('click',event=>{const b=event.target.closest('button')
 
 // Versie 1.9.9: formulier na opslaan sluiten en op verzoek weer openen.
 $('openQuickEdit').onclick=()=>{$('quickEdit').hidden=false;$('openQuickEdit').hidden=true;$('quickEdit').scrollIntoView({behavior:'smooth',block:'nearest'})};
+
+// Versie 2.0.0: onafhankelijke navigatie door lange tuinplattegrond.
+const gardenScroller=$('mapOuter'),gardenSlider=$('gardenScrollPosition');
+function syncGardenSlider(){const range=Math.max(0,gardenScroller.scrollHeight-gardenScroller.clientHeight);gardenSlider.value=range?Math.round(gardenScroller.scrollTop/range*100):0}
+gardenScroller.addEventListener('scroll',syncGardenSlider,{passive:true});
+gardenSlider.addEventListener('input',()=>{const range=Math.max(0,gardenScroller.scrollHeight-gardenScroller.clientHeight);gardenScroller.scrollTop=range*Number(gardenSlider.value)/100});
+$('gardenScrollUp').onclick=()=>gardenScroller.scrollBy({top:-Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
+$('gardenScrollDown').onclick=()=>gardenScroller.scrollBy({top:Math.max(150,gardenScroller.clientHeight*.7),behavior:'smooth'});
+$('gardenScrollBottom').onclick=()=>gardenScroller.scrollTo({top:gardenScroller.scrollHeight,behavior:'smooth'});

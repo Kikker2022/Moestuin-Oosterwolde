@@ -172,3 +172,10 @@ main,.panel{overflow:visible}
 .advancedGreenButton{background:#174f30;border-color:#123d25}
 #myGardenContent,#cloudPanelContent,#meterContent{padding-top:12px}
 #myGardenContent[hidden],#cloudPanelContent[hidden],#meterContent[hidden]{display:none!important}
+
+/* Versie 2.0.3: zichtbare horizontale beweging ook op een smalle telefoon.
+   100% zoom blijft gelijk, maar de kaart behoudt een minimale breedte. */
+@media(max-width:650px){#map{min-width:560px!important}.map-outer{overflow-x:auto!important}}
+.darkGreenSection{width:100%!important;max-width:none!important;min-height:48px;background:#174f30!important;color:white!important;text-align:left!important;border-radius:10px;font-weight:700}
+.darkGreenAction{background:#174f30!important;color:#fff!important;border:1px solid #123d25!important;font-weight:700}
+.darkGreenAction:active,.darkGreenSection:active{background:#0c321d!important}

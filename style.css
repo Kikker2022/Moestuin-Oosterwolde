@@ -158,3 +158,7 @@ main,.panel{overflow:visible}
 .gardenScrollControls input[type=range]{flex:1 1 90px;min-width:90px;margin:0;accent-color:#387448;touch-action:pan-x}
 #simplePathForm[hidden]{display:none!important}
 @media(max-width:520px){.gardenScrollControls button{font-size:.78rem;padding:7px 9px}.map-outer::-webkit-scrollbar{width:24px}}
+
+/* Versie 2.0.1: horizontaal scrollen naast verticaal schuiven. */
+#gardenScrollHorizontal{flex:1 1 130px;min-width:110px;accent-color:#387448;touch-action:pan-x}
+#gardenScrollHorizontal:disabled{opacity:.4}

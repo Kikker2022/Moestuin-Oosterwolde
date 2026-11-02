@@ -145,3 +145,16 @@ button.buttonAcknowledged{outline:3px solid #e4ad37;outline-offset:2px}
 .rasModeButtons button,.smallGreenButton{background:#e4f3e7;color:#1c6034;border:1px solid #8cb79a;border-radius:9px;padding:7px 11px;font-size:.9rem;font-weight:600;min-height:38px}
 .rasModeButtons button.active{background:#287443;color:white;border-color:#287443}
 .quickRasBlock [hidden]{display:none!important}
+
+/* Versie 2.0.0: de hele pagina en lange tuin blijven bereikbaar. */
+html,body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch}
+main,.panel{overflow:visible}
+.map-outer{max-height:min(68dvh,680px);overflow-y:scroll;overflow-x:auto;overscroll-behavior-y:auto;scrollbar-width:auto;scrollbar-color:#527c59 #e4eee5}
+.map-outer::-webkit-scrollbar{width:22px;height:14px}
+.map-outer::-webkit-scrollbar-thumb{background:#527c59;border:3px solid #e4eee5;border-radius:12px}
+.map-outer::-webkit-scrollbar-track{background:#e4eee5}
+.gardenScrollControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 15px;padding:8px;background:#eff6ee;border-radius:10px}
+.gardenScrollControls button{min-height:42px;padding:8px 11px;font-size:.86rem;flex:0 0 auto}
+.gardenScrollControls input[type=range]{flex:1 1 90px;min-width:90px;margin:0;accent-color:#387448;touch-action:pan-x}
+#simplePathForm[hidden]{display:none!important}
+@media(max-width:520px){.gardenScrollControls button{font-size:.78rem;padding:7px 9px}.map-outer::-webkit-scrollbar{width:24px}}

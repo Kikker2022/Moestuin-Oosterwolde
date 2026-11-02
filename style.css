@@ -193,3 +193,6 @@ main,.panel{overflow:visible}
 #toggleAdvanced:active,#toggleCatalog:active,#toggleLegend:active,
 #toggleMyGarden:active,#toggleCloudPanel:active,#toggleMeters:active,
 #addPath:active,#undo:active{background:#216538!important}
+
+/* v2.0.6: verkleinen weer mogelijk, zonder minimumkaartbreedte */
+#map{min-width:0!important;max-width:none!important}

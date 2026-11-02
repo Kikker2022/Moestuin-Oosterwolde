@@ -861,3 +861,20 @@ gardenScroller.addEventListener('scroll',syncHorizontalSlider,{passive:true});
 window.addEventListener('resize',syncHorizontalSlider);
 if(typeof ResizeObserver!=='undefined')new ResizeObserver(syncHorizontalSlider).observe(gardenScroller);
 requestAnimationFrame(syncHorizontalSlider);
+
+// Versie 2.0.2: overzichtelijke, inklapbare onderdelen.
+// Bestaande invoervelden en synchronisatiefuncties blijven intact.
+for(const [buttonId,panelId,label] of [
+ ['toggleMyGarden','myGardenContent','Mijn Tuin'],
+ ['toggleCloudPanel','cloudPanelContent','Synchronisatie'],
+ ['toggleMeters','meterContent','Ingedeelde meters']
+]){
+ const button=document.getElementById(buttonId),panel=document.getElementById(panelId);
+ if(!button||!panel)continue;
+ button.onclick=()=>{
+   const opening=panel.hidden;
+   panel.hidden=!opening;
+   button.setAttribute('aria-expanded',String(opening));
+   button.textContent=(opening?'▾ ':'▸ ')+label;
+ };
+}

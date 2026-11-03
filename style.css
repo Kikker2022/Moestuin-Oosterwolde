@@ -196,3 +196,9 @@ main,.panel{overflow:visible}
 
 /* v2.0.6: verkleinen weer mogelijk, zonder minimumkaartbreedte */
 #map{min-width:0!important;max-width:none!important}
+
+/* v2.0.7: compacte kop, zoom tot op 5%, geen vaste aspect-ratio die de zoom beperkt */
+.visuallyHiddenStatus{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#map{aspect-ratio:auto!important;height:auto!important;max-height:none!important}
+.zoomBar label{flex:0 0 auto;min-width:48px}
+.zoomBar input[type=range]{flex:1 1 180px}

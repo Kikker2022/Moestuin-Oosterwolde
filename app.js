@@ -539,48 +539,64 @@ const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clie
 // Versie 2.1.1: herschikken werkt horizontaal én verticaal.
 // Alle betrokken vakken worden als één geheel gevalideerd; de oude
 // posities van die vakken mogen de nieuwe posities niet blokkeren.
-function reorderBedsDuringDrag(draggedId,desiredX,desiredY,axis){
+
+// Versie 2.1.2. Bij slepen blijft de indeling stabiel. Pas bij loslaten
+// wisselen de vakken, zodat grote en kleine vakken elkaar niet blokkeren.
+function reorderBedsDuringDrag(draggedId,targetX,targetY,axis,originalState){
  const moved=state.objects.find(o=>o.id===draggedId);
  if(!moved||moved.type!=='bed'||(moved.rotation||0)%180!==0)return false;
+ const horizontal=axis==='x',key=horizontal?'x':'y',size=horizontal?'width':'length';
+ const cross=horizontal?'y':'x',crossSize=horizontal?'length':'width';
  const lane=gardenSection(moved);
- const key=axis==='x'?'x':'y',size=axis==='x'?'width':'length';
- const cross=axis==='x'?'y':'x',crossSize=axis==='x'?'length':'width';
- const sameBand=o=>Math.min(o[cross]+o[crossSize],moved[cross]+moved[crossSize])-Math.max(o[cross],moved[cross])>.05;
+ const old=(originalState?.objects||state.objects).find(o=>o.id===draggedId)||moved;
+ const oldCenter=old[key]+old[size]/2;
+ const wantedCenter=(horizontal?targetX:targetY)+old[size]/2;
+ const delta=wantedCenter-oldCenter;
+ if(Math.abs(delta)<.12)return false;
+ const overlapBand=o=>Math.min(o[cross]+o[crossSize],old[cross]+old[crossSize])-Math.max(o[cross],old[cross])>.04;
  const items=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===lane&&
-  (o.rotation||0)%180===0&&sameBand(o)&&
+  (o.rotation||0)%180===0&&overlapBand(o)&&
   (o.perennial||moved.perennial||String(o.year)===String(moved.year)))
   .sort((a,b)=>a[key]-b[key]||a.id-b.id);
  const from=items.findIndex(o=>o.id===draggedId);
  if(from<0||items.length<2)return false;
  const others=items.filter(o=>o.id!==draggedId);
- const target=axis==='x'?desiredX:desiredY;
- const at=others.filter(o=>o[key]+o[size]/2<target+moved[size]/2).length;
- if(at===from)return false;
- const ordered=[...others.slice(0,at),moved,...others.slice(at)];
- const originals=items.map(o=>({o,x:o.x,y:o.y}));
- const gap=.01;
- const total=ordered.reduce((n,o)=>n+o[size],0)+gap*(ordered.length-1);
- const lower=axis==='x'?(lane==='A'?.5:5.5):0;
- const upper=axis==='x'?lower+5:state.length;
+ // Het middelpunt van het doelvak bepaalt de nieuwe volgorde.
+ // Een extra drempel van 0.12 m voorkomt onbedoeld wisselen bij tikken.
+ let to=others.filter(o=>o[key]+o[size]/2<wantedCenter).length;
+ if(to===from){
+   const neighbor=others[delta>0?from:from-1];
+   if(!neighbor)return false;
+   const boundary=neighbor[key]+neighbor[size]/2;
+   if(delta>0&&wantedCenter>boundary-.12)to=from+1;
+   else if(delta<0&&wantedCenter<boundary+.12)to=from-1;
+ }
+ if(to===from)return false;
+ const sequence=[...others.slice(0,to),moved,...others.slice(to)];
+ const saved=items.map(o=>({o,x:o.x,y:o.y}));
+ const gap=.005;
+ const total=sequence.reduce((sum,o)=>sum+o[size],0)+gap*(sequence.length-1);
+ const lower=horizontal?(lane==='A'?.5:5.5):0;
+ const upper=horizontal?lower+5:state.length;
  if(total>upper-lower+.00001)return false;
- const movingIds=new Set(items.map(o=>o.id));
+ const ids=new Set(items.map(o=>o.id));
  const first=Math.min(...items.map(o=>o[key]));
  const starts=[Math.max(lower,Math.min(first,upper-total)),lower,upper-total];
- for(let v=lower;v<=upper-total+.0001;v+=.2)starts.push(v);
- for(const start of starts){
-  let pos=start;
-  for(const o of ordered){o[key]=Math.round(pos*1000)/1000;pos+=o[size]+gap}
+ for(let st=lower;st<=upper-total+.001;st+=.1)starts.push(st);
+ for(const st of starts){
+  let pos=st;
+  for(const o of sequence){o[key]=Math.round(pos*10000)/10000;pos+=o[size]+gap}
   const valid=items.every(o=>{
    const poly=polygon(o),eps=.00001;
-   if(poly.some(q=>q.x<-eps||q.y<-eps||q.x>state.width+eps||q.y>state.length+eps))return false;
-   if(![.5,5.5].some(left=>poly.every(q=>q.x>=left-eps&&q.x<=left+5+eps)))return false;
-   return !state.objects.some(q=>!movingIds.has(q.id)&&
-    !(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year)&&
-    polygonsOverlap(poly,polygon(q)));
-  });
-  if(valid&&items.every((o,i)=>items.slice(i+1).every(q=>!polygonsOverlap(polygon(o),polygon(q)))))return true;
+   if(poly.some(pt=>pt.x<-eps||pt.y<-eps||pt.x>state.width+eps||pt.y>state.length+eps))return false;
+   if(![.5,5.5].some(left=>poly.every(pt=>pt.x>=left-eps&&pt.x<=left+5+eps)))return false;
+   return !state.objects.some(q=>!ids.has(q.id)&&
+     !(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year)&&
+     polygonsOverlap(poly,polygon(q)));
+  })&&items.every((o,i)=>items.slice(i+1).every(q=>!polygonsOverlap(polygon(o),polygon(q))));
+  if(valid)return true;
  }
- for(const {o,x,y} of originals){o.x=x;o.y=y}
+ for(const {o,x,y} of saved){o.x=x;o.y=y}
  return false;
 }
 svg.addEventListener('pointerdown',e=>{
@@ -591,11 +607,11 @@ svg.addEventListener('pointerdown',e=>{
  selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;
  const o=state.objects.find(x=>x.id===id);
  if(pendingAssignment!==null&&o?.type==='bed'){
-  const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return
+  const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return;
  }
- const p=point(e);if(!o||!p)return;
- drag={id,pointerId:e.pointerId,start:p,x:o.x,y:o.y,original:clone(state),
-  moved:false,targetX:o.x,targetY:o.y,reordered:false};
+ const startPoint=point(e);if(!o||!startPoint)return;
+ drag={id,pointerId:e.pointerId,start:startPoint,x:o.x,y:o.y,original:clone(state),
+  moved:false,targetX:o.x,targetY:o.y,axis:null};
  try{svg.setPointerCapture(e.pointerId)}catch{}
  paint();
 });
@@ -604,33 +620,41 @@ svg.addEventListener('pointermove',e=>{
  const p=point(e),o=state.objects.find(x=>x.id===drag.id);
  if(!p||!o)return;
  const dx=p.x-drag.start.x,dy=p.y-drag.start.y;
- if(Math.abs(dx)+Math.abs(dy)>.025)drag.moved=true;
- const round=v=>Math.round(v*100)/100;
- const tx=round(drag.x+dx),ty=round(drag.y+dy);
- drag.targetX=tx;drag.targetY=ty;
+ drag.targetX=Math.round((drag.x+dx)*100)/100;
+ drag.targetY=Math.round((drag.y+dy)*100)/100;
+ drag.axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
+ if(Math.hypot(dx,dy)>.12)drag.moved=true;
  if(!drag.moved)return;
- // Voor een wisseling geldt de richting van de daadwerkelijke muis- of vingerbeweging.
- const axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
- const target={...o,x:tx,y:ty};
- if(fits(target)){o.x=tx;o.y=ty;paint();return}
- if(reorderBedsDuringDrag(o.id,tx,ty,axis)){drag.reordered=true;paint();return}
- if(fits({...o,x:tx})){o.x=tx;paint();return}
- if(fits({...o,y:ty})){o.y=ty;paint();return}
+ // Vrije beweging kan meteen; bij botsingen wacht het wisselen tot loslaten.
+ const target={...o,x:drag.targetX,y:drag.targetY};
+ if(fits(target)){o.x=target.x;o.y=target.y;paint()}
 });
 function endDrag(e){
  if(!drag||(e&&e.pointerId!==undefined&&e.pointerId!==drag.pointerId))return;
- const o=state.objects.find(x=>x.id===drag.id);
- if(o&&drag.moved&&!drag.reordered){
-  const dx=drag.targetX-drag.x,dy=drag.targetY-drag.y;
-  const axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
-  if(reorderBedsDuringDrag(drag.id,drag.targetX,drag.targetY,axis)){drag.reordered=true;paint()}
+ const d=drag;drag=null;
+ const o=state.objects.find(x=>x.id===d.id);
+ if(o&&d.moved){
+  // Herstel eerst de originele posities. Daarna wordt één volledige
+  // herschikking getest: eerst de dominante as, dan de andere as.
+  state.objects=d.original.objects.map(obj=>clone(obj));
+  const preferred=d.axis||'y',alternative=preferred==='x'?'y':'x';
+  let rearranged=reorderBedsDuringDrag(d.id,d.targetX,d.targetY,preferred,d.original);
+  if(!rearranged)rearranged=reorderBedsDuringDrag(d.id,d.targetX,d.targetY,alternative,d.original);
+  if(!rearranged){
+   const current=state.objects.find(x=>x.id===d.id);
+   if(current&&fits({...current,x:d.targetX,y:d.targetY})){
+    current.x=d.targetX;current.y=d.targetY;
+   }
+  }
+  const current=state.objects.find(x=>x.id===d.id);
+  const changed=rearranged||(current&&(current.x!==d.x||current.y!==d.y));
+  if(changed){
+   history.push(d.original);if(history.length>40)history.shift();
+   storeHistory();updateUndo();save();
+  }
+  paint();
  }
- if(drag.moved&&(drag.reordered||o?.x!==drag.x||o?.y!==drag.y)){
-  history.push(drag.original);if(history.length>40)history.shift();
-  storeHistory();updateUndo();save();
- }
- try{if(svg.hasPointerCapture(drag.pointerId))svg.releasePointerCapture(drag.pointerId)}catch{}
- drag=null;
+ try{if(svg.hasPointerCapture(d.pointerId))svg.releasePointerCapture(d.pointerId)}catch{}
 }
 svg.addEventListener('pointerup',endDrag);
 svg.addEventListener('pointercancel',endDrag);

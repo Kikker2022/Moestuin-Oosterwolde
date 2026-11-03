@@ -202,3 +202,10 @@ main,.panel{overflow:visible}
 #map{aspect-ratio:auto!important;height:auto!important;max-height:none!important}
 .zoomBar label{flex:0 0 auto;min-width:48px}
 .zoomBar input[type=range]{flex:1 1 180px}
+
+/* v2.0.8: gelijke knoppen en schermvullende zoom */
+.horizontalScrollRow{display:flex;align-items:center;gap:8px;width:100%}
+.horizontalScrollRow .scrollDirectionButton{min-height:42px;min-width:100px;flex:0 0 auto;font-size:.9rem;padding:8px 10px}
+.horizontalScrollRow input[type=range]{flex:1 1 auto;min-width:45px}
+#map{height:auto!important;min-width:0!important}
+@media(max-width:400px){.horizontalScrollRow .scrollDirectionButton{min-width:86px;padding:8px 6px;font-size:.82rem}}

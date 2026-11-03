@@ -42,19 +42,23 @@ function updateUndo(){$('undo').disabled=!history.length;if($('rotatePrevious'))
 
 let mapZoom=100;
 function applyZoom(){
- const map=$('map');
- // Bij 100% is de kaart bewust breder dan het venster, zodat links/rechts schuiven werkt.
- // Bij 50% past de volledige breedte weer in het venster.
+ const map=$('map'),outer=$('mapOuter');
+ // 100% = hele tuin in de zichtbare uitsnede, zowel in breedte als hoogte.
+ // Zoom is onafhankelijk van de oude minimum-breedte en 1.65-factor.
+ const ratio=(state.width+2)/(state.length+2);
+ const availableW=Math.max(100,outer.clientWidth-4);
+ const availableH=Math.max(120,outer.clientHeight||Math.min(window.innerHeight*.68,680));
+ const fitWidth=Math.min(availableW,availableH*ratio);
  map.style.minWidth='0';
- map.style.width=(mapZoom*1.65)+'%';
+ map.style.width=(fitWidth*mapZoom/100)+'px';
  $('mapZoom').value=mapZoom;
  $('zoomValue').textContent=mapZoom+'%';
  requestAnimationFrame(()=>{if(typeof syncHorizontalSlider==='function')syncHorizontalSlider()});
 }
 $('mapZoom').addEventListener('input',e=>{mapZoom=Number(e.target.value);applyZoom()});
-$('zoomOut').onclick=()=>{mapZoom=Math.max(50,mapZoom-25);applyZoom()};
-$('zoomReset').onclick=()=>{mapZoom=100;applyZoom();$('mapOuter').scrollTo(0,0)};
-$('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+25);applyZoom()};
+$('zoomOut').onclick=()=>{mapZoom=Math.max(50,mapZoom-5);applyZoom()};
+
+$('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+5);applyZoom()};
 const visible=o=>o.type==='path'||o.perennial||!o.year||o.year===state.year;
 const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
@@ -280,7 +284,7 @@ function splitWidth(i=0,j=0){
  const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;
  const r=sections(o)[i],c=r?.cols[j];if(!c||c.width<.4){notify('Dit vak is te smal om in de lengte te splitsen');return}
  checkpoint();const half=c.width/2;c.width=half;
- r.cols.splice(j+1,0,{crop:0,width:half,varieties:[]});save();paint();
+ r.cols.splice(j+1,0,{crop:0,width:half,varieties:[]});selectedCell={i,j:j+1};save();paint();
 }
 function chooseMergedCrop(first,second){
  const options=crops.map(([name],i)=>i+': '+name).join('\n');
@@ -487,7 +491,18 @@ $('rotate15').onclick=()=>rotateSelected(-15);$('rotate7').onclick=()=>rotateSel
 $('rotatePrevious').onclick=()=>undoGardenStep();
 $('objPerennial').onchange=()=>{const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const before=!!o.perennial,desired=$('objPerennial').checked;if(before===desired)return;const test={...o,perennial:desired};if(desired&&!fits(test)){notify('Kan niet vast worden: dit vak overlapt een vak uit een ander jaar.');$('objPerennial').checked=before;return}checkpoint();o.perennial=desired;if(desired)o.perennialSource=state.year;else{o.year=state.year;const source=String(o.perennialSource||o.year);if(o.sections?.[source]&&!o.sections[state.year])o.sections[state.year]=clone(o.sections[source]);}save();paint();notify(desired?'Vaste beplanting blijft zichtbaar in volgende jaren':'Vak hoort nu alleen bij '+state.year)};
 // De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
-function splitByDirection(along){const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const longIsWidth=o.width>o.length;if(along){if(longIsWidth)splitLength(0);else splitWidth(0,0)}else{if(longIsWidth)splitWidth(0,0);else splitLength(0)}}
+function splitByDirection(along){
+ const o=state.objects.find(x=>x.id===selected);
+ if(!o||o.type!=='bed')return;
+ // Splits het vak waarop de gebruiker heeft getikt, niet steeds linksboven.
+ const i=selectedCell?.i??0,j=selectedCell?.j??0;
+ const longIsWidth=o.width>o.length;
+ if(along){
+   if(longIsWidth)splitLength(i);else splitWidth(i,j);
+ }else{
+   if(longIsWidth)splitWidth(i,j);else splitLength(i);
+ }
+}
 $('split').onclick=()=>splitByDirection(false);if($('splitWidth'))$('splitWidth').onclick=()=>splitByDirection(true);$('delete').onclick=()=>{const i=state.objects.findIndex(x=>x.id===selected);if(i<0)return;if(!confirm('Dit object verwijderen?'))return;checkpoint();state.objects.splice(i,1);selected=null;selectedCell=null;save();paint()};function undoGardenStep(){
  if(!history.length){notify('Geen eerdere bewerking meer');return}
  state=history.pop();storeHistory();selected=null;selectedCell=null;
@@ -906,3 +921,6 @@ for(const [buttonId,panelId,label] of [
    button.textContent=(opening?'▾ ':'▸ ')+label;
  };
 }
+
+// Herbereken de schermvullende zoom na draaien van het toestel.
+window.addEventListener('resize',()=>applyZoom());

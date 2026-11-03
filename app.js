@@ -43,22 +43,20 @@ function updateUndo(){$('undo').disabled=!history.length;if($('rotatePrevious'))
 let mapZoom=100;
 function applyZoom(){
  const map=$('map'),outer=$('mapOuter');
- // 100% = hele tuin in de zichtbare uitsnede, zowel in breedte als hoogte.
- // Zoom is onafhankelijk van de oude minimum-breedte en 1.65-factor.
- const ratio=(state.width+2)/(state.length+2);
+ // 100% vult de beschikbare breedte; hoogte volgt uit de SVG-viewBox.
+ // Geen fit-op-hoogte: dat maakte de 30 meter lange tuin slechts 1/3 breed.
  const availableW=Math.max(100,outer.clientWidth-4);
- const availableH=Math.max(120,outer.clientHeight||Math.min(window.innerHeight*.68,680));
- const fitWidth=Math.min(availableW,availableH*ratio);
  map.style.minWidth='0';
- map.style.width=(fitWidth*mapZoom/100)+'px';
+ map.style.width=(availableW*mapZoom/100)+'px';
+ map.style.height='auto';
  $('mapZoom').value=mapZoom;
  $('zoomValue').textContent=mapZoom+'%';
  requestAnimationFrame(()=>{if(typeof syncHorizontalSlider==='function')syncHorizontalSlider()});
 }
 $('mapZoom').addEventListener('input',e=>{mapZoom=Number(e.target.value);applyZoom()});
-$('zoomOut').onclick=()=>{mapZoom=Math.max(50,mapZoom-5);applyZoom()};
+$('zoomOut').onclick=()=>{mapZoom=Math.max(40,mapZoom-10);applyZoom()};
 
-$('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+5);applyZoom()};
+$('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+10);applyZoom()};
 const visible=o=>o.type==='path'||o.perennial||!o.year||o.year===state.year;
 const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
@@ -523,7 +521,29 @@ function resizeGarden(){const length=Number($('gardenWidth').value),width=Number
 function syncInputs(){$('gardenWidth').value=state.length;$('gardenLength').value=state.width;$('year').value=state.year}
 $('gardenWidth').onchange=resizeGarden;$('gardenLength').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};
 const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clientX;p.y=evt.clientY;const matrix=svg.getScreenCTM();if(!matrix)return null;const q=p.matrixTransform(matrix.inverse());return{x:q.x-1,y:q.y-1}}
-svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{if(!drag)return;const p=point(e);const o=state.objects.find(x=>x.id===drag.id);if(!p||!o)return;const dx=p.x-drag.start.x,dy=p.y-drag.start.y;if(Math.abs(dx)+Math.abs(dy)>.08)drag.moved=true;const nx=Math.round((drag.x+dx)*10)/10,ny=Math.round((drag.y+dy)*10)/10;const test={...o,x:nx,y:ny};if(fits(test)){o.x=nx;o.y=ny;paint()}});function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{
+ if(!drag)return;
+ const p=point(e),o=state.objects.find(x=>x.id===drag.id);
+ if(!p||!o)return;
+ const dx=p.x-drag.start.x,dy=p.y-drag.start.y;
+ if(Math.abs(dx)+Math.abs(dy)>.025)drag.moved=true;
+ const round=v=>Math.round(v*100)/100;
+ const targetX=round(drag.x+dx),targetY=round(drag.y+dy);
+ // Beweeg in kleine stappen. Bij een botsing mag het vak langs de
+ // andere strook schuiven, maar niet door een ander vak heen springen.
+ let x=o.x,y=o.y;
+ const steps=Math.max(1,Math.ceil(Math.max(Math.abs(targetX-x),Math.abs(targetY-y))/.10));
+ for(let k=1;k<=steps;k++){
+   const tx=round(x+(targetX-x)/(steps-k+1));
+   const ty=round(y+(targetY-y)/(steps-k+1));
+   if(fits({...o,x:tx,y:ty})){x=tx;y=ty;continue}
+   if(fits({...o,x:tx,y})){x=tx;continue}
+   if(fits({...o,x,y:ty})){y=ty;continue}
+   break;
+ }
+ if(x!==o.x||y!==o.y){o.x=x;o.y=y;paint()}
+});
+function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!(Number(incoming.year)>=2026&&Number(incoming.year)<=2035)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;ensureCatalog();loadCustomCrops();applyCropOverrides();selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};
@@ -900,6 +920,9 @@ function syncHorizontalSlider(){
  gardenHorizontal.value=range?Math.round(gardenScroller.scrollLeft/range*100):0;
 }
 gardenHorizontal.oninput=()=>{ensureHorizontalRoom();const range=Math.max(0,gardenScroller.scrollWidth-gardenScroller.clientWidth);gardenScroller.scrollLeft=range*Number(gardenHorizontal.value)/100};
+$('gardenScrollLeft').onclick=()=>gardenScroller.scrollBy({left:-Math.max(100,gardenScroller.clientWidth*.65),behavior:'smooth'});
+$('gardenScrollRight').onclick=()=>gardenScroller.scrollBy({left:Math.max(100,gardenScroller.clientWidth*.65),behavior:'smooth'});
+
 gardenScroller.addEventListener('scroll',syncHorizontalSlider,{passive:true});
 window.addEventListener('resize',syncHorizontalSlider);
 if(typeof ResizeObserver!=='undefined')new ResizeObserver(syncHorizontalSlider).observe(gardenScroller);

@@ -226,3 +226,6 @@ main,.panel{overflow:visible}
  justify-content:center!important;white-space:nowrap!important;flex:none!important;
 }
 @media(max-width:400px){.gardenScrollControls{grid-template-columns:88px minmax(0,1fr) 88px!important}}
+
+/* 2.1.1: directe pointerbediening op de plattegrond */
+#map{touch-action:none;user-select:none;-webkit-user-select:none}

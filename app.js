@@ -328,13 +328,24 @@ $('simpleCreate').onclick=()=>{
  obj.sections[state.year]=[{length,cols:[{crop,width,label:enteredName,varieties:enteredVariety?[newVariety(crop,enteredVariety)]:[]}]}];
  // Eenjarig: alleen dit jaar; vaste beplanting gebruikt steeds het bronjaar.
  let found=false;
- // Zoek op een raster van 10 cm, van boven naar beneden. Houd bestaande vakken intact.
- for(let y=0;y<=state.length-length+.00001&&!found;y+=.1){
-   for(let x=x0;x<=x0+5-width+.00001;x+=.1){obj.x=+x.toFixed(3);obj.y=+y.toFixed(3);if(fits(obj,null)){found=true;break}}
+ // Voorspelbaar: probeer eerst direct ONDER het laatste vak in A of B.
+ // Als daar geen ruimte is, zoek dan de eerste vrije plek vanaf boven.
+ const inPart=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===part&&
+  (o.perennial||String(o.year)===String(state.year)));
+ const after=inPart.length?Math.max(...inPart.map(o=>o.y+dims(o).h))+.02:0;
+ let fallback=false;
+ for(const startY of [after,0]){
+  if(found)break;
+  for(let y=startY;y<=state.length-length+.00001&&!found;y+=.1){
+   for(let x=x0;x<=x0+5-width+.00001;x+=.1){
+    obj.x=+x.toFixed(3);obj.y=+y.toFixed(3);
+    if(fits(obj,null)){found=true;fallback=startY===0&&after>0;break}
+   }
+  }
  }
  if(!found){alert('Geen vrije ruimte gevonden in tuingedeelte '+part+'. Probeer een kleiner vak of verplaats eerst een bestaand vak.');return}
  checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;selectedCell={i:0,j:0};
- $('simpleBedForm').hidden=true;$('simplePerennial').checked=false;$('simpleName').value='';$('simpleVariety').value='';save();paint();notify('✓ '+crops[crop][0]+' geplaatst in tuingedeelte '+part);
+ $('simpleBedForm').hidden=true;$('simplePerennial').checked=false;$('simpleName').value='';$('simpleVariety').value='';save();paint();notify('✓ '+crops[crop][0]+' geplaatst '+(fallback?'op de eerste vrije plek':'onder de bestaande vakken')+' in tuin '+part);requestAnimationFrame(()=>{const group=$('map').querySelector('[data-id="'+obj.id+'"]');if(group)group.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'})});
 };
 function refreshQuickSuggestions(){
  const list=$('quickVarietySuggestions'),box=$('quickVarietyChoices');if(!list||!box)return;
@@ -521,6 +532,33 @@ function resizeGarden(){const length=Number($('gardenWidth').value),width=Number
 function syncInputs(){$('gardenWidth').value=state.length;$('gardenLength').value=state.width;$('year').value=state.year}
 $('gardenWidth').onchange=resizeGarden;$('gardenLength').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};
 const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clientX;p.y=evt.clientY;const matrix=svg.getScreenCTM();if(!matrix)return null;const q=p.matrixTransform(matrix.inverse());return{x:q.x-1,y:q.y-1}}
+// Verplaats een strook door een andere strook heen: alle tussenliggende
+// vakken schuiven in dezelfde tuinstrook op, zonder hun afmetingen te wijzigen.
+// Dit werkt voor niet-gedraaide groentevakken binnen dezelfde A/B-strook.
+function reorderBedsDuringDrag(draggedId,desiredY){
+ const moved=state.objects.find(o=>o.id===draggedId);
+ if(!moved||moved.type!=='bed'||((moved.rotation||0)%180)!==0)return false;
+ const lane=gardenSection(moved);
+ const same=o=>o.type==='bed'&&gardenSection(o)===lane&&((o.rotation||0)%180)===0&&
+  (o.perennial||moved.perennial||String(o.year)===String(moved.year));
+ const ordered=state.objects.filter(same).sort((a,b)=>a.y-b.y||a.id-b.id);
+ const current=ordered.findIndex(o=>o.id===draggedId);
+ if(current<0||ordered.length<2)return false;
+ const others=ordered.filter(o=>o.id!==draggedId);
+ // Het midden van het gesleepte vak bepaalt de nieuwe positie.
+ const center=desiredY+moved.length/2;
+ const at=others.filter(o=>o.y+o.length/2<center).length;
+ if(at===current)return false;
+ const sequence=[...others.slice(0,at),moved,...others.slice(at)];
+ const saved=new Map(ordered.map(o=>[o.id,{x:o.x,y:o.y}]));
+ // Vakken in dezelfde kolom herschikken; de eerste positie blijft vast.
+ let y=Math.min(...ordered.map(o=>o.y));
+ for(const o of sequence){o.y=Math.round(y*1000)/1000;y+=o.length+.02}
+ // Controleer alle grenzen en alle andere objecten, inclusief looppaden.
+ const ok=ordered.every(o=>fits(o));
+ if(!ok){for(const o of ordered){const old=saved.get(o.id);o.x=old.x;o.y=old.y}return false}
+ return true;
+}
 svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{
  if(!drag)return;
  const p=point(e),o=state.objects.find(x=>x.id===drag.id);
@@ -529,19 +567,21 @@ svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(
  if(Math.abs(dx)+Math.abs(dy)>.025)drag.moved=true;
  const round=v=>Math.round(v*100)/100;
  const targetX=round(drag.x+dx),targetY=round(drag.y+dy);
- // Beweeg in kleine stappen. Bij een botsing mag het vak langs de
- // andere strook schuiven, maar niet door een ander vak heen springen.
- let x=o.x,y=o.y;
- const steps=Math.max(1,Math.ceil(Math.max(Math.abs(targetX-x),Math.abs(targetY-y))/.10));
- for(let k=1;k<=steps;k++){
-   const tx=round(x+(targetX-x)/(steps-k+1));
-   const ty=round(y+(targetY-y)/(steps-k+1));
-   if(fits({...o,x:tx,y:ty})){x=tx;y=ty;continue}
-   if(fits({...o,x:tx,y})){x=tx;continue}
-   if(fits({...o,x,y:ty})){y=ty;continue}
-   break;
+ // Eerst normale verplaatsing, zodat vrij slepen mogelijk blijft.
+ const candidate={...o,x:targetX,y:targetY};
+ if(fits(candidate)){
+   o.x=targetX;o.y=targetY;paint();return;
  }
- if(x!==o.x||y!==o.y){o.x=x;o.y=y;paint()}
+ // Bij een botsing met een groentevak: herschik de volgorde.
+ // Geen wijziging als er onvoldoende plaats is aan het einde van de strook.
+ if(Math.abs(targetX-drag.x)<Math.max(.5,o.width/2)&&
+    reorderBedsDuringDrag(o.id,targetY)){
+   drag.reordered=true;paint();return;
+ }
+ // Andere objecten en paden blokkeren nog steeds, maar schuiven langs een
+ // obstakel kan wel langs één as.
+ if(fits({...o,x:targetX})){o.x=targetX;paint();return}
+ if(fits({...o,y:targetY})){o.y=targetY;paint();return}
 });
 function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};

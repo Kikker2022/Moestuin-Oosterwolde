@@ -535,75 +535,106 @@ const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clie
 // Verplaats een strook door een andere strook heen: alle tussenliggende
 // vakken schuiven in dezelfde tuinstrook op, zonder hun afmetingen te wijzigen.
 // Dit werkt voor niet-gedraaide groentevakken binnen dezelfde A/B-strook.
-function reorderBedsDuringDrag(draggedId,desiredY){
+
+// Versie 2.1.1: herschikken werkt horizontaal én verticaal.
+// Alle betrokken vakken worden als één geheel gevalideerd; de oude
+// posities van die vakken mogen de nieuwe posities niet blokkeren.
+function reorderBedsDuringDrag(draggedId,desiredX,desiredY,axis){
  const moved=state.objects.find(o=>o.id===draggedId);
- if(!moved||moved.type!=='bed'||((moved.rotation||0)%180)!==0)return false;
+ if(!moved||moved.type!=='bed'||(moved.rotation||0)%180!==0)return false;
  const lane=gardenSection(moved);
- // Alleen vakken in dezelfde fysieke kolom wisselen; andere vakken blijven staan.
- const overlapsX=o=>Math.min(o.x+o.width,moved.x+moved.width)-Math.max(o.x,moved.x)>.05;
- const ordered=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===lane&&
-   ((o.rotation||0)%180)===0&&overlapsX(o)&&
-   (o.perennial||moved.perennial||String(o.year)===String(moved.year)))
-   .sort((a,b)=>a.y-b.y||a.id-b.id);
- const current=ordered.findIndex(o=>o.id===draggedId);
- if(current<0||ordered.length<2)return false;
- const others=ordered.filter(o=>o.id!==draggedId);
- const center=desiredY+moved.length/2;
- const at=others.filter(o=>o.y+o.length/2<center).length;
- if(at===current)return false;
- const sequence=[...others.slice(0,at),moved,...others.slice(at)];
- const originals=new Map(ordered.map(o=>[o.id,{x:o.x,y:o.y}]));
- // Zoek een aaneengesloten positie voor de nieuwe volgorde. Zo hoeven
- // de bestaande tussenruimten niet exact bij het omwisselen te passen.
- const total=sequence.reduce((sum,o)=>sum+o.length,0);
- const gap=.02,needed=total+gap*(sequence.length-1);
- const maxStart=state.length-needed;
- if(maxStart<0)return false;
- const initial=Math.min(...ordered.map(o=>o.y));
- const starts=[initial,Math.max(0,Math.min(initial,maxStart)),0];
- for(let start=0;start<=maxStart+.001;start+=.25)starts.push(start);
+ const key=axis==='x'?'x':'y',size=axis==='x'?'width':'length';
+ const cross=axis==='x'?'y':'x',crossSize=axis==='x'?'length':'width';
+ const sameBand=o=>Math.min(o[cross]+o[crossSize],moved[cross]+moved[crossSize])-Math.max(o[cross],moved[cross])>.05;
+ const items=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===lane&&
+  (o.rotation||0)%180===0&&sameBand(o)&&
+  (o.perennial||moved.perennial||String(o.year)===String(moved.year)))
+  .sort((a,b)=>a[key]-b[key]||a.id-b.id);
+ const from=items.findIndex(o=>o.id===draggedId);
+ if(from<0||items.length<2)return false;
+ const others=items.filter(o=>o.id!==draggedId);
+ const target=axis==='x'?desiredX:desiredY;
+ const at=others.filter(o=>o[key]+o[size]/2<target+moved[size]/2).length;
+ if(at===from)return false;
+ const ordered=[...others.slice(0,at),moved,...others.slice(at)];
+ const originals=items.map(o=>({o,x:o.x,y:o.y}));
+ const gap=.01;
+ const total=ordered.reduce((n,o)=>n+o[size],0)+gap*(ordered.length-1);
+ const lower=axis==='x'?(lane==='A'?.5:5.5):0;
+ const upper=axis==='x'?lower+5:state.length;
+ if(total>upper-lower+.00001)return false;
+ const movingIds=new Set(items.map(o=>o.id));
+ const first=Math.min(...items.map(o=>o[key]));
+ const starts=[Math.max(lower,Math.min(first,upper-total)),lower,upper-total];
+ for(let v=lower;v<=upper-total+.0001;v+=.2)starts.push(v);
  for(const start of starts){
-   if(start<0||start>maxStart+.001)continue;
-   let y=start;
-   for(const o of sequence){o.y=Math.round(y*1000)/1000;y+=o.length+gap}
-   if(ordered.every(o=>fits(o)))return true;
+  let pos=start;
+  for(const o of ordered){o[key]=Math.round(pos*1000)/1000;pos+=o[size]+gap}
+  const valid=items.every(o=>{
+   const poly=polygon(o),eps=.00001;
+   if(poly.some(q=>q.x<-eps||q.y<-eps||q.x>state.width+eps||q.y>state.length+eps))return false;
+   if(![.5,5.5].some(left=>poly.every(q=>q.x>=left-eps&&q.x<=left+5+eps)))return false;
+   return !state.objects.some(q=>!movingIds.has(q.id)&&
+    !(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year)&&
+    polygonsOverlap(poly,polygon(q)));
+  });
+  if(valid&&items.every((o,i)=>items.slice(i+1).every(q=>!polygonsOverlap(polygon(o),polygon(q)))))return true;
  }
- for(const o of ordered){const old=originals.get(o.id);o.x=old.x;o.y=old.y}
+ for(const {o,x,y} of originals){o.x=x;o.y=y}
  return false;
 }
-svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false,targetY:o.y};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{
- if(!drag)return;
+svg.addEventListener('pointerdown',e=>{
+ const g=e.target.closest('[data-id]');
+ if(!g){selected=null;selectedCell=null;paint();return}
+ const id=Number(g.getAttribute('data-id'));selected=id;
+ const targetCell=e.target.closest('[data-row][data-col]');
+ selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;
+ const o=state.objects.find(x=>x.id===id);
+ if(pendingAssignment!==null&&o?.type==='bed'){
+  const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return
+ }
+ const p=point(e);if(!o||!p)return;
+ drag={id,pointerId:e.pointerId,start:p,x:o.x,y:o.y,original:clone(state),
+  moved:false,targetX:o.x,targetY:o.y,reordered:false};
+ try{svg.setPointerCapture(e.pointerId)}catch{}
+ paint();
+});
+svg.addEventListener('pointermove',e=>{
+ if(!drag||e.pointerId!==drag.pointerId)return;
  const p=point(e),o=state.objects.find(x=>x.id===drag.id);
  if(!p||!o)return;
  const dx=p.x-drag.start.x,dy=p.y-drag.start.y;
  if(Math.abs(dx)+Math.abs(dy)>.025)drag.moved=true;
  const round=v=>Math.round(v*100)/100;
- const targetX=round(drag.x+dx),targetY=round(drag.y+dy);drag.targetY=targetY;
- // Eerst normale verplaatsing, zodat vrij slepen mogelijk blijft.
- const candidate={...o,x:targetX,y:targetY};
- if(fits(candidate)){
-   o.x=targetX;o.y=targetY;paint();return;
- }
- // Bij een botsing met een groentevak: herschik de volgorde.
- // Geen wijziging als er onvoldoende plaats is aan het einde van de strook.
- if(Math.abs(targetX-drag.x)<Math.max(.5,o.width/2)&&
-    reorderBedsDuringDrag(o.id,targetY)){
-   drag.reordered=true;paint();return;
- }
- // Andere objecten en paden blokkeren nog steeds, maar schuiven langs een
- // obstakel kan wel langs één as.
- if(fits({...o,x:targetX})){o.x=targetX;paint();return}
- if(fits({...o,y:targetY})){o.y=targetY;paint();return}
+ const tx=round(drag.x+dx),ty=round(drag.y+dy);
+ drag.targetX=tx;drag.targetY=ty;
+ if(!drag.moved)return;
+ // Voor een wisseling geldt de richting van de daadwerkelijke muis- of vingerbeweging.
+ const axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
+ const target={...o,x:tx,y:ty};
+ if(fits(target)){o.x=tx;o.y=ty;paint();return}
+ if(reorderBedsDuringDrag(o.id,tx,ty,axis)){drag.reordered=true;paint();return}
+ if(fits({...o,x:tx})){o.x=tx;paint();return}
+ if(fits({...o,y:ty})){o.y=ty;paint();return}
 });
-function endDrag(){
- if(!drag)return;
- const obj=state.objects.find(o=>o.id===drag.id);
- // Bij loslaten op een ander vak: wissel de volgorde, ook als het
- // tussenliggende vak de gewone sleepbeweging heeft geblokkeerd.
- if(obj&&drag.moved&&!drag.reordered&&Math.abs(drag.targetY-drag.y)>.15){
-   if(reorderBedsDuringDrag(drag.id,drag.targetY)){drag.reordered=true;paint()}
+function endDrag(e){
+ if(!drag||(e&&e.pointerId!==undefined&&e.pointerId!==drag.pointerId))return;
+ const o=state.objects.find(x=>x.id===drag.id);
+ if(o&&drag.moved&&!drag.reordered){
+  const dx=drag.targetX-drag.x,dy=drag.targetY-drag.y;
+  const axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
+  if(reorderBedsDuringDrag(drag.id,drag.targetX,drag.targetY,axis)){drag.reordered=true;paint()}
  }
- if(drag.moved && (drag.reordered || state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+ if(drag.moved&&(drag.reordered||o?.x!==drag.x||o?.y!==drag.y)){
+  history.push(drag.original);if(history.length>40)history.shift();
+  storeHistory();updateUndo();save();
+ }
+ try{if(svg.hasPointerCapture(drag.pointerId))svg.releasePointerCapture(drag.pointerId)}catch{}
+ drag=null;
+}
+svg.addEventListener('pointerup',endDrag);
+svg.addEventListener('pointercancel',endDrag);
+window.addEventListener('pointerup',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!(Number(incoming.year)>=2026&&Number(incoming.year)<=2035)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;ensureCatalog();loadCustomCrops();applyCropOverrides();selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};

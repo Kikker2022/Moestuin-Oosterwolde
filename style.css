@@ -209,3 +209,20 @@ main,.panel{overflow:visible}
 .horizontalScrollRow input[type=range]{flex:1 1 auto;min-width:45px}
 #map{height:auto!important;min-width:0!important}
 @media(max-width:400px){.horizontalScrollRow .scrollDirectionButton{min-width:86px;padding:8px 6px;font-size:.82rem}}
+
+/* v2.0.9: identieke maat en uitlijning voor vier scrollknoppen */
+.gardenScrollControls{display:grid!important;grid-template-columns:100px minmax(0,1fr) 100px!important;gap:8px!important;align-items:center!important}
+.gardenScrollControls>.horizontalScrollRow{display:contents!important}
+.gardenScrollControls>#gardenScrollUp{grid-column:1;grid-row:1}
+.gardenScrollControls>#gardenScrollPosition{grid-column:2;grid-row:1;min-width:0;width:100%}
+.gardenScrollControls>#gardenScrollDown{grid-column:3;grid-row:1}
+.gardenScrollControls #gardenScrollLeft{grid-column:1;grid-row:2}
+.gardenScrollControls #gardenScrollHorizontal{grid-column:2;grid-row:2;min-width:0;width:100%}
+.gardenScrollControls #gardenScrollRight{grid-column:3;grid-row:2}
+.gardenScrollControls #gardenScrollUp,.gardenScrollControls #gardenScrollDown,
+.gardenScrollControls #gardenScrollLeft,.gardenScrollControls #gardenScrollRight{
+ box-sizing:border-box!important;min-width:0!important;width:100%!important;height:44px!important;
+ min-height:44px!important;padding:6px 5px!important;font-size:.82rem!important;
+ justify-content:center!important;white-space:nowrap!important;flex:none!important;
+}
+@media(max-width:400px){.gardenScrollControls{grid-template-columns:88px minmax(0,1fr) 88px!important}}

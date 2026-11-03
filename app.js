@@ -539,34 +539,46 @@ function reorderBedsDuringDrag(draggedId,desiredY){
  const moved=state.objects.find(o=>o.id===draggedId);
  if(!moved||moved.type!=='bed'||((moved.rotation||0)%180)!==0)return false;
  const lane=gardenSection(moved);
- const same=o=>o.type==='bed'&&gardenSection(o)===lane&&((o.rotation||0)%180)===0&&
-  (o.perennial||moved.perennial||String(o.year)===String(moved.year));
- const ordered=state.objects.filter(same).sort((a,b)=>a.y-b.y||a.id-b.id);
+ // Alleen vakken in dezelfde fysieke kolom wisselen; andere vakken blijven staan.
+ const overlapsX=o=>Math.min(o.x+o.width,moved.x+moved.width)-Math.max(o.x,moved.x)>.05;
+ const ordered=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===lane&&
+   ((o.rotation||0)%180)===0&&overlapsX(o)&&
+   (o.perennial||moved.perennial||String(o.year)===String(moved.year)))
+   .sort((a,b)=>a.y-b.y||a.id-b.id);
  const current=ordered.findIndex(o=>o.id===draggedId);
  if(current<0||ordered.length<2)return false;
  const others=ordered.filter(o=>o.id!==draggedId);
- // Het midden van het gesleepte vak bepaalt de nieuwe positie.
  const center=desiredY+moved.length/2;
  const at=others.filter(o=>o.y+o.length/2<center).length;
  if(at===current)return false;
  const sequence=[...others.slice(0,at),moved,...others.slice(at)];
- const saved=new Map(ordered.map(o=>[o.id,{x:o.x,y:o.y}]));
- // Vakken in dezelfde kolom herschikken; de eerste positie blijft vast.
- let y=Math.min(...ordered.map(o=>o.y));
- for(const o of sequence){o.y=Math.round(y*1000)/1000;y+=o.length+.02}
- // Controleer alle grenzen en alle andere objecten, inclusief looppaden.
- const ok=ordered.every(o=>fits(o));
- if(!ok){for(const o of ordered){const old=saved.get(o.id);o.x=old.x;o.y=old.y}return false}
- return true;
+ const originals=new Map(ordered.map(o=>[o.id,{x:o.x,y:o.y}]));
+ // Zoek een aaneengesloten positie voor de nieuwe volgorde. Zo hoeven
+ // de bestaande tussenruimten niet exact bij het omwisselen te passen.
+ const total=sequence.reduce((sum,o)=>sum+o.length,0);
+ const gap=.02,needed=total+gap*(sequence.length-1);
+ const maxStart=state.length-needed;
+ if(maxStart<0)return false;
+ const initial=Math.min(...ordered.map(o=>o.y));
+ const starts=[initial,Math.max(0,Math.min(initial,maxStart)),0];
+ for(let start=0;start<=maxStart+.001;start+=.25)starts.push(start);
+ for(const start of starts){
+   if(start<0||start>maxStart+.001)continue;
+   let y=start;
+   for(const o of sequence){o.y=Math.round(y*1000)/1000;y+=o.length+gap}
+   if(ordered.every(o=>fits(o)))return true;
+ }
+ for(const o of ordered){const old=originals.get(o.id);o.x=old.x;o.y=old.y}
+ return false;
 }
-svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{
+svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(!g){selected=null;selectedCell=null;paint();return}const id=Number(g.getAttribute('data-id'));selected=id;const targetCell=e.target.closest('[data-row][data-col]');selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;const o=state.objects.find(x=>x.id===id);if(pendingAssignment!==null&&o?.type==='bed'){const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return}const p=point(e);if(!o||!p)return;drag={id,start:p,x:o.x,y:o.y,original:clone(state),moved:false,targetY:o.y};svg.setPointerCapture(e.pointerId);paint()});svg.addEventListener('pointermove',e=>{
  if(!drag)return;
  const p=point(e),o=state.objects.find(x=>x.id===drag.id);
  if(!p||!o)return;
  const dx=p.x-drag.start.x,dy=p.y-drag.start.y;
  if(Math.abs(dx)+Math.abs(dy)>.025)drag.moved=true;
  const round=v=>Math.round(v*100)/100;
- const targetX=round(drag.x+dx),targetY=round(drag.y+dy);
+ const targetX=round(drag.x+dx),targetY=round(drag.y+dy);drag.targetY=targetY;
  // Eerst normale verplaatsing, zodat vrij slepen mogelijk blijft.
  const candidate={...o,x:targetX,y:targetY};
  if(fits(candidate)){
@@ -583,7 +595,15 @@ svg.addEventListener('pointerdown',e=>{const g=e.target.closest('[data-id]');if(
  if(fits({...o,x:targetX})){o.x=targetX;paint();return}
  if(fits({...o,y:targetY})){o.y=targetY;paint();return}
 });
-function endDrag(){if(!drag)return;if(drag.moved && (state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+function endDrag(){
+ if(!drag)return;
+ const obj=state.objects.find(o=>o.id===drag.id);
+ // Bij loslaten op een ander vak: wissel de volgorde, ook als het
+ // tussenliggende vak de gewone sleepbeweging heeft geblokkeerd.
+ if(obj&&drag.moved&&!drag.reordered&&Math.abs(drag.targetY-drag.y)>.15){
+   if(reorderBedsDuringDrag(drag.id,drag.targetY)){drag.reordered=true;paint()}
+ }
+ if(drag.moved && (drag.reordered || state.objects.find(o=>o.id===drag.id)?.x!==drag.x || state.objects.find(o=>o.id===drag.id)?.y!==drag.y)){history.push(drag.original);if(history.length>40)history.shift();storeHistory();updateUndo();save()}drag=null}svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mijn-slimme-moestuin-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('import').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const incoming=JSON.parse(await f.text());if(!incoming||!Array.isArray(incoming.objects)||!Number.isFinite(incoming.length)||!Number.isFinite(incoming.width)||incoming.length<1||incoming.width<1||!(Number(incoming.year)>=2026&&Number(incoming.year)<=2035)||!Number.isInteger(incoming.nextId))throw Error('Ongeldig bestand');if(!confirm('Huidige tuin vervangen door deze back-up?'))return;checkpoint();state=incoming;ensureCatalog();loadCustomCrops();applyCropOverrides();selected=null;selectedCell=null;save();syncInputs();paint()}catch{alert('Dit is geen geldige back-up van Mijn Slimme Moestuin.')}finally{e.target.value=''}};
 $('reset').onclick=()=>{if(!confirm('Het huidige tuinplan vervangen door de basisindeling A en B (30 × 5 m per strook)? Maak eerst een back-up als je iets wilt bewaren.'))return;checkpoint();state=initial();selected=null;selectedCell=null;save();syncInputs();paint()};

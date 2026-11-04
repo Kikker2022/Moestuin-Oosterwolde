@@ -16,7 +16,7 @@ const knownVarieties={
 };
 const extraCrops=['Tomaat','Komkommer','Courgette','Pompoen','Paprika','Peper','Radijs','Pastinaak','Knolselderij','Bleekselderij','Venkel','Erwt','Peultjes','Tuinboon','Mais','Rucola','Andijvie','Snijbiet','Aardbei','Framboos','Braam','Blauwe bes','Rode bes','Zwarte bes','Druif','Rabarber','Appel','Peer','Kers','Pruim','Kruiden'];
 extraCrops.forEach((name,i)=>crops.push([name,['#c3dda6','#e7c7a5','#b4d8bd','#d4c7e5','#efd59a'][i%5]]));
-const cropNames=()=>crops.map((c,i)=>({id:i,name:c[0]})).filter(c=>c.id>0 && !(state?.hiddenCropIds||[]).includes(c.id));
+const cropNames=()=>crops.map((c,i)=>({id:i,name:c[0]})).filter(c=>c.id>0 && !(state?.hiddenCropIds||[]).includes(c.id)).sort((a,b)=>a.name.localeCompare(b.name,'nl',{sensitivity:'base'}));
 const cellVarieties=c=>Array.isArray(c.varieties)?c.varieties:[];
 const varietyLabel=c=>{const v=cellVarieties(c);return v.length===1?v[0].name:v.length>1?v.length+' rassen':(crops[c.crop]?.[0]||'Leeg')};
 function ensureLibrary(){if(!Array.isArray(state.customVarieties))state.customVarieties=[]}
@@ -167,11 +167,13 @@ function renderTotals(){
   if(c.crop)sums.set(c.crop,(sums.get(c.crop)||0)+area);
  })));
  $('cropTotals').textContent=`In ${state.year} ingedeeld: ${used.toLocaleString('nl-NL',{maximumFractionDigits:2})} m² · `+(sums.size?[...sums].map(([id,a])=>`${String(id).padStart(2,'0')} ${crops[id]?.[0]||'?'}: ${a.toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`).join(' · '):'nog geen groenten toegewezen');
- const legend=$('cropLegend');legend.replaceChildren();crops.forEach(([name,color],i)=>{if(i===0||(state.hiddenCropIds||[]).includes(i))return;const item=document.createElement('span');item.className='legendItem';const sw=document.createElement('i');sw.style.background=color;item.append(sw,document.createTextNode(`${String(i).padStart(2,'0')} ${name}`));legend.append(item)});renderCropManager();
+ const legend=$('cropLegend');legend.replaceChildren();cropNames().forEach(({id:i,name})=>{const color=crops[i]?.[1];const item=document.createElement('span');item.className='legendItem';const sw=document.createElement('i');sw.style.background=color;item.append(sw,document.createTextNode(`${String(i).padStart(2,'0')} ${name}`));legend.append(item)});renderCropManager();
 }
+$('editSelectedBed').onclick=()=>{if(selected===null)return;const editor=$('editPanel');editor.scrollIntoView({behavior:'smooth',block:'start'});const quick=$('quickEdit');if(quick&&!quick.hidden){setTimeout(()=>quick.scrollIntoView({behavior:'smooth',block:'nearest'}),200)}};
 function renderEditor(){
  const o=state.objects.find(x=>x.id===selected && visible(x));
  $('editor').hidden=!o;$('editorEmpty').hidden=!!o;
+ $('editSelectedBed').hidden=!(o&&o.type==='bed');
  $('editTitle').textContent=o?(o.type==='bed'?`Tuingedeelte ${gardenSection(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
  if(!o)return;
  const quick=$('quickEdit');quick.hidden=o.type!=='bed';

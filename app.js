@@ -169,11 +169,25 @@ function renderTotals(){
  $('cropTotals').textContent=`In ${state.year} ingedeeld: ${used.toLocaleString('nl-NL',{maximumFractionDigits:2})} m² · `+(sums.size?[...sums].map(([id,a])=>`${String(id).padStart(2,'0')} ${crops[id]?.[0]||'?'}: ${a.toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`).join(' · '):'nog geen groenten toegewezen');
  const legend=$('cropLegend');legend.replaceChildren();cropNames().forEach(({id:i,name})=>{const color=crops[i]?.[1];const item=document.createElement('span');item.className='legendItem';const sw=document.createElement('i');sw.style.background=color;item.append(sw,document.createTextNode(`${String(i).padStart(2,'0')} ${name}`));legend.append(item)});renderCropManager();
 }
-$('editSelectedBed').onclick=()=>{if(selected===null)return;const editor=$('editPanel');editor.scrollIntoView({behavior:'smooth',block:'start'});const quick=$('quickEdit');if(quick&&!quick.hidden){setTimeout(()=>quick.scrollIntoView({behavior:'smooth',block:'nearest'}),200)}};
+$('editSelectedBed').onclick=()=>{
+ const o=state.objects.find(x=>x.id===selected&&visible(x));if(!o)return;
+ const editor=$('editPanel');
+ if(o.type==='path'){
+  const area=$('advancedTools');area.hidden=false;
+  $('toggleAdvanced').setAttribute('aria-expanded','true');
+  $('toggleAdvanced').textContent='⚙ Geavanceerd sluiten';
+  editor.scrollIntoView({behavior:'smooth',block:'start'});
+  setTimeout(()=>area.scrollIntoView({behavior:'smooth',block:'nearest'}),180);
+ }else{
+  editor.scrollIntoView({behavior:'smooth',block:'start'});
+  const quick=$('quickEdit');if(quick&&!quick.hidden){setTimeout(()=>quick.scrollIntoView({behavior:'smooth',block:'nearest'}),200)}
+ }
+};
 function renderEditor(){
  const o=state.objects.find(x=>x.id===selected && visible(x));
  $('editor').hidden=!o;$('editorEmpty').hidden=!!o;
- $('editSelectedBed').hidden=!(o&&o.type==='bed');
+ $('editSelectedBed').hidden=!o;
+ $('editSelectedBed').textContent=o?.type==='path'?'Bewerken geselecteerd looppad':'Bewerken geselecteerde strook';
  $('editTitle').textContent=o?(o.type==='bed'?`Tuingedeelte ${gardenSection(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
  if(!o)return;
  const quick=$('quickEdit');quick.hidden=o.type!=='bed';

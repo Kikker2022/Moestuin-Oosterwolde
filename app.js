@@ -183,7 +183,7 @@ function renderEditor(){
    $('quickEditHelp').textContent=`Bewerk vak ${loc.i+1}.${loc.j+1} in deze strook. Tik op een ander vakje om dat te kiezen.`;
    $('quickName').value=cell?.label||'';
    const picker=$('quickCrop');picker.replaceChildren();
-   crops.forEach(([name],id)=>{if(!(state.hiddenCropIds||[]).includes(id)||id===cell?.crop)picker.append(new Option(name,String(id)))});
+   crops.map(([name],id)=>({name,id})).filter(v=>!(state.hiddenCropIds||[]).includes(v.id)||v.id===cell?.crop).sort((a,b)=>a.name.localeCompare(b.name,'nl',{sensitivity:'base'})).forEach(({name,id})=>picker.append(new Option(name,String(id))));
    picker.value=String(cell?.crop||0);
    $('quickVariety').value=(cell?.varieties||[]).map(v=>v.name).filter(Boolean).join(', ');
    quickSelectedVarieties=new Set((cell?.varieties||[]).map(v=>v.name).filter(Boolean));
@@ -214,7 +214,7 @@ function renderEditor(){
    const row=document.createElement('div');row.className='sectionRow';
    const a=document.createElement('label');a.textContent=`Vak ${i+1}.${j+1} · Groente`;
    const select=document.createElement('select');
-   crops.forEach(([n],k)=>{if((state.hiddenCropIds||[]).includes(k))return;const opt=document.createElement('option');opt.value=k;opt.textContent=n;select.append(opt)});
+   cropNames().forEach(({name:n,id:k})=>{const opt=document.createElement('option');opt.value=k;opt.textContent=n;select.append(opt)});
    select.value=c.crop;
    select.onchange=()=>{const newCrop=Number(select.value);if(cellVarieties(c).length&&!confirm('De rassenregistraties in dit vak wissen omdat je het gewas verandert?')){paint();return}checkpoint();c.crop=newCrop;c.varieties=[];save();paint()};a.append(select);
    const b=document.createElement('label');b.textContent='Breedte (m)';
@@ -314,7 +314,7 @@ function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.ye
 // Eenvoudige invoer: één scherm en automatische plaatsing in A of B.
 function refreshSimpleCrops(){
  const select=$('simpleCrop'),chosen=select.value;select.replaceChildren();
- crops.forEach(([name],id)=>{if(id)select.append(new Option(name,String(id)))});
+ cropNames().forEach(({name,id})=>select.append(new Option(name,String(id))));
  if(chosen&&[...select.options].some(o=>o.value===chosen))select.value=chosen;
 }
 $('addBed').onclick=()=>{refreshSimpleCrops();$('simpleBedForm').hidden=false;$('simpleBedForm').scrollIntoView({behavior:'smooth',block:'nearest'})};
@@ -686,7 +686,7 @@ function registerEntries(){
  state.objects.filter(o=>o.type==='bed').forEach(o=>Object.entries(o.sections||{}).forEach(([year,rows])=>{
   rows.forEach((r,i)=>(r.cols||[]).forEach((cell,j)=>cellVarieties(cell).forEach((v,k)=>entries.push({o,year,i,j,k,cell,v,key:`${o.id}/${year}/${i}/${j}/${k}`}))));
  }));
- return entries;
+ return entries.sort((a,b)=>(crops[a.cell.crop]?.[0]||'').localeCompare(crops[b.cell.crop]?.[0]||'','nl',{sensitivity:'base'})||String(a.v.name||'').localeCompare(String(b.v.name||''),'nl',{sensitivity:'base'}));
 }
 function renderRegister(){
  const root=$('registerList');if(!root)return;
@@ -784,7 +784,7 @@ $('saveCatalogNew').onclick=()=>{const crop=Number($('newCatalogCrop').value),na
 $('addCrop').onclick=()=>createManagedCrop();
 function assignCatalogToCell(id,obj,i,j){const e=state.catalog.find(x=>String(x.id)===String(id));if(!e||!obj||obj.type!=='bed')return;const cell=sections(obj)[i]?.cols[j];if(!cell)return;if(cellVarieties(cell).length&&Number(cell.crop)!==Number(e.crop)&&!confirm('Dit vak bevat andere teeltgegevens. Deze vervangen?'))return;checkpoint();if(Number(cell.crop)!==Number(e.crop)){cell.crop=Number(e.crop);cell.varieties=[]}cell.varieties??=[];if(cell.varieties.some(v=>String(v.catalogId)===String(e.id))){notify('Dit ras staat al in dit vak');return}const v=newVariety(e.crop,e.name);Object.assign(v,{catalogId:e.id,shop:e.shop||'',price:e.price||'',amount:e.amount||''});cell.varieties.push(v);pendingAssignment=null;save();paint();notify('✓ Ras aan tuinvlak toegewezen')}
 function downloadCsv(rows,filename){const esc=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,m=>"'"+m)+'"';const csv='\uFEFF'+rows.map(r=>r.map(esc).join(';')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-$('catalogExport').onclick=()=>{ensureCatalog();downloadCsv([catalogColumns.map(x=>x[1]),...state.catalog.slice().sort((a,b)=>a.crop-b.crop||a.name.localeCompare(b.name,'nl')).map(e=>catalogColumns.map(([k])=>k==='crop'?crops[e.crop]?.[0]:e[k]))],'mijn-moestuinregister.csv')};
+$('catalogExport').onclick=()=>{ensureCatalog();downloadCsv([catalogColumns.map(x=>x[1]),...state.catalog.slice().sort((a,b)=>(crops[a.crop]?.[0]||'').localeCompare(crops[b.crop]?.[0]||'','nl',{sensitivity:'base'})||String(a.name||'').localeCompare(String(b.name||''),'nl',{sensitivity:'base'})).map(e=>catalogColumns.map(([k])=>k==='crop'?crops[e.crop]?.[0]:e[k]))],'mijn-moestuinregister.csv')};
 function parseCsv(s){s=s.replace(/^\uFEFF/,'');const first=s.split(/\r?\n/,1)[0];const sep=(first.match(/;/g)||[]).length>=(first.match(/,/g)||[]).length?';':',';const rows=[];let row=[],field='',quoted=false;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(quoted&&s[i+1]==='"'){field+='"';i++}else quoted=!quoted}else if(c===sep&&!quoted){row.push(field);field=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&s[i+1]==='\n')i++;row.push(field);if(row.some(x=>x!==''))rows.push(row);row=[];field=''}else field+=c}if(quoted)throw Error('Onjuist CSV-bestand');row.push(field);if(row.some(x=>x!==''))rows.push(row);return rows}
 $('catalogImport').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const rows=parseCsv(await file.text());const expected=catalogColumns.map(x=>x[1]);if(!rows.length||expected.some((h,i)=>rows[0][i]!==h))throw Error('Kolomkoppen komen niet overeen. Exporteer eerst een voorbeeld vanuit de app.');const updates=[];const seen=new Set();for(const row of rows.slice(1)){const rec={};catalogColumns.forEach(([k],i)=>rec[k]=String(row[i]||'').trim());const crop=crops.findIndex(c=>c[0].toLowerCase()===rec.crop.toLowerCase());if(crop<1||!rec.name)throw Error('Ongeldig gewas of lege rasnaam in CSV');rec.crop=crop;rec.id=rec.id?Number(rec.id):null;if(rec.id!==null&&(!Number.isSafeInteger(rec.id)||rec.id<1||seen.has(rec.id)))throw Error('Ongeldig of dubbel ID');if(rec.id)seen.add(rec.id);updates.push(rec)}if(!confirm(`${updates.length} regels importeren? Bestaande ID’s worden bijgewerkt; andere regels worden toegevoegd. Maak eerst een JSON-back-up.`))return;ensureCatalog();checkpoint();for(const rec of updates){let existing=state.catalog.find(x=>x.id===rec.id);if(existing)Object.assign(existing,rec);else{if(!rec.id||state.catalog.some(x=>x.id===rec.id))rec.id=state.nextCatalogId++;else state.nextCatalogId=Math.max(state.nextCatalogId,rec.id+1);state.catalog.push(rec)}}save();paint();notify('✓ Moestuinregister geïmporteerd')}catch(err){alert('Import mislukt: '+err.message)}finally{e.target.value=''}};
 
@@ -890,7 +890,7 @@ $('exportWorkbook').onclick=()=>{
  if(!workbookReady())return;
  ensureCatalog();
  const head=['ID aankoop','Gewas','Ras','Leverancier','Prijs (€)','Hoeveelheid gekocht','Aankoopdatum','Aankoopopmerkingen','Tuinjaar','Tuinvak','Tuinmaand','Zaai- of pootdatum','Oogst vanaf','Oogst tot','Weersomstandigheden','Beoordeling','Opbrengst (kg)','Teeltopmerkingen'];
- const purchases=state.catalog.slice().sort((a,b)=>Number(a.crop)-Number(b.crop)||String(a.name).localeCompare(String(b.name),'nl'));
+ const purchases=state.catalog.slice().sort((a,b)=>(crops[a.crop]?.[0]||'').localeCompare(crops[b.crop]?.[0]||'','nl',{sensitivity:'base'})||String(a.name||'').localeCompare(String(b.name||''),'nl',{sensitivity:'base'}));
  const records=registerEntries();
  const rows=[];
  const matched=new Set();
@@ -932,7 +932,7 @@ $('exportWorkbook').onclick=()=>{
 // Versie 1.8.2: echte Excel-downloads en gecontroleerde import.
 function workbookReady(){if(typeof XLSX==='undefined'){alert('Excel-ondersteuning is niet geladen. Controleer de internetverbinding.');return false}return true}
 function exportXlsx(head,rows,sheet,filename){if(!workbookReady())return;const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet([head,...rows]);ws['!autofilter']={ref:`A1:${XLSX.utils.encode_col(head.length-1)}${Math.max(2,rows.length+1)}`};ws['!cols']=head.map(h=>({wch:Math.max(14,Math.min(32,String(h).length+7))}));XLSX.utils.book_append_sheet(wb,ws,sheet);XLSX.writeFile(wb,filename)}
-$('catalogExport').onclick=()=>{ensureCatalog();exportXlsx(catalogColumns.map(x=>x[1]),state.catalog.slice().sort((a,b)=>a.crop-b.crop||a.name.localeCompare(b.name,'nl')).map(e=>catalogColumns.map(([k])=>k==='crop'?crops[e.crop]?.[0]:e[k])),'Zaden en aankopen','zaden-en-aankopen.xlsx')};
+$('catalogExport').onclick=()=>{ensureCatalog();exportXlsx(catalogColumns.map(x=>x[1]),state.catalog.slice().sort((a,b)=>(crops[a.crop]?.[0]||'').localeCompare(crops[b.crop]?.[0]||'','nl',{sensitivity:'base'})||String(a.name||'').localeCompare(String(b.name||''),'nl',{sensitivity:'base'})).map(e=>catalogColumns.map(([k])=>k==='crop'?crops[e.crop]?.[0]:e[k])),'Zaden en aankopen','zaden-en-aankopen.xlsx')};
 $('exportRegister').onclick=()=>{const head=['Jaar','Vak','ID aankoop','Gewas','Ras','Tuinmaand','Gezaaid gepoot','Oogst vanaf','Oogst tot','Weersomstandigheden','Leverancier','Prijs (€)','Hoeveelheid','Beoordeling','Opbrengst (kg)','Opmerkingen'];const rows=registerEntries().map(e=>[e.year,`${gardenSection(e.o)}-S${String(e.o.id).padStart(2,'0')} / ${e.i+1}.${e.j+1}`,e.v.catalogId||'',crops[e.cell.crop]?.[0]||'',e.v.name||'',e.v.month||'',e.v.planting||'',harvestStart(e.v),harvestEnd(e.v),e.v.weather||'',e.v.shop||'',e.v.price||'',e.v.amount||'',e.v.rating||'',e.v.yieldKg||'',e.v.notes||'']);exportXlsx(head,rows,'Teeltresultaten','teeltresultaten.xlsx')};
 async function readXlsx(file){if(!workbookReady())throw Error('Excel-ondersteuning niet beschikbaar');const data=await file.arrayBuffer();const book=XLSX.read(data,{type:'array',cellDates:false});if(!book.SheetNames.length)throw Error('Leeg Excel-bestand');return XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:'',raw:false})}
 $('catalogImport').onchange=async ev=>{const file=ev.target.files?.[0];if(!file)return;try{const rows=await readXlsx(file),head=catalogColumns.map(x=>x[1]);if(head.some((h,i)=>rows[0]?.[i]!==h))throw Error('Kolommen komen niet overeen met de Excel-export.');const entries=[];const seen=new Set();for(const row of rows.slice(1)){if(!row.some(v=>String(v).trim()))continue;const rec={};catalogColumns.forEach(([k],i)=>rec[k]=String(row[i]??'').trim());const crop=crops.findIndex(c=>c[0].toLocaleLowerCase('nl')===rec.crop.toLocaleLowerCase('nl'));if(crop<1||!rec.name)throw Error('Onbekend gewas of lege rasnaam');rec.crop=crop;rec.id=rec.id?Number(rec.id):null;if(rec.id!==null&&(!Number.isSafeInteger(rec.id)||rec.id<1||seen.has(rec.id)))throw Error('Dubbel of ongeldig ID');if(rec.id)seen.add(rec.id);entries.push(rec)}if(!confirm(`${entries.length} aankopen importeren? Bestaande ID's worden bijgewerkt. Maak eerst een JSON-back-up.`))return;checkpoint();ensureCatalog();for(const rec of entries){const existing=state.catalog.find(x=>x.id===rec.id);if(existing)Object.assign(existing,rec);else{if(!rec.id||state.catalog.some(x=>x.id===rec.id))rec.id=state.nextCatalogId++;else state.nextCatalogId=Math.max(state.nextCatalogId,rec.id+1);state.catalog.push(rec)}}save();paint();notify('✓ Excel-aankopen geïmporteerd')}catch(e){alert('Excel-import mislukt: '+e.message)}finally{ev.target.value=''}};

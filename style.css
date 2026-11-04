@@ -233,3 +233,6 @@ main,.panel{overflow:visible}
 .selectedEditHeading{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px}
 .selectedEditHeading h2{margin:0;flex:1;min-width:170px}
 .selectedEditHeading #editSelectedBed{background:#20583a;color:white;border:1px solid #20583a;min-height:42px;white-space:normal}
+
+/* 2.1.5: alle actieknoppen exact dezelfde groene kleur */
+#editSelectedBed,#addBed{background:#2d6547!important;border-color:#2d6547!important;color:#fff!important}

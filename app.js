@@ -93,7 +93,7 @@ function fits(o,exclude=o.id){
  if(o.type==='bed'&&!([.5,5.5].some(left=>poly.every(p=>p.x>=left-eps&&p.x<=left+5+eps))))return false;
  if(o.type==='path'&&poly.some(p=>p.x<.5-eps||p.x>10.5+eps))return false;
  return !state.objects.some(q=>{
-  if(q.id===exclude||(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year))return false;
+  if(q.id===exclude||(o.type==='path'&&q.type==='path')||(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year))return false;
   return polygonsOverlap(poly,polygon(q));
  });
 }
@@ -605,6 +605,20 @@ function placeDraggedBed(d){
  if(fits({...o,x:tx,y:ty})){o.x=tx;o.y=ty;return true}
  // Bij het overzetten naar A/B: zoek in de nieuwe strook naar een
  // vrije positie op de gewenste hoogte. Geen bestaande vakken aanpassen.
+ if(o.type==='path'){
+  // Paden mogen elkaar kruisen of overlappen. Een bezet eindpunt
+  // met groentevakken blijft verboden; zoek een nabije vrije eindplek.
+  const candidates=[];
+  for(let radius=0;radius<=1.5;radius+=.1){
+   for(const [dx,dy] of [[0,0],[radius,0],[-radius,0],[0,radius],[0,-radius],
+                         [radius,radius],[radius,-radius],[-radius,radius],[-radius,-radius]]){
+    candidates.push({x:Math.round((tx+dx)*100)/100,y:Math.round((ty+dy)*100)/100});
+   }
+  }
+  for(const candidate of candidates){
+   if(fits({...o,...candidate})){o.x=candidate.x;o.y=candidate.y;return true}
+  }
+ }
  if(o.type==='bed'){
   const centers=[3,8],targetCenter=tx+o.width/2;
   const destinationLane=centers.reduce((best,c,i)=>Math.abs(c-targetCenter)<Math.abs(centers[best]-targetCenter)?i:best,0);
@@ -664,7 +678,7 @@ function endDrag(e){
   if(ok){
    history.push(d.original);if(history.length>40)history.shift();
    storeHistory();updateUndo();save();
-  }else notify('Op de gekozen plek is geen ruimte voor dit vak');
+  }else notify('Op de gekozen plek is geen ruimte voor dit vak of looppad');
   paint();
  }
  try{if(svg.hasPointerCapture(d.pointerId))svg.releasePointerCapture(d.pointerId)}catch{}

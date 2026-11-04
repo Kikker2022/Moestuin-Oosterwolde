@@ -539,64 +539,95 @@ const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clie
 // Versie 2.1.1: herschikken werkt horizontaal én verticaal.
 // Alle betrokken vakken worden als één geheel gevalideerd; de oude
 // posities van die vakken mogen de nieuwe posities niet blokkeren.
-
-// Versie 2.1.2. Bij slepen blijft de indeling stabiel. Pas bij loslaten
-// wisselen de vakken, zodat grote en kleine vakken elkaar niet blokkeren.
-function reorderBedsDuringDrag(draggedId,targetX,targetY,axis,originalState){
+function reorderBedsDuringDrag(draggedId,desiredX,desiredY,axis){
  const moved=state.objects.find(o=>o.id===draggedId);
  if(!moved||moved.type!=='bed'||(moved.rotation||0)%180!==0)return false;
- const horizontal=axis==='x',key=horizontal?'x':'y',size=horizontal?'width':'length';
- const cross=horizontal?'y':'x',crossSize=horizontal?'length':'width';
  const lane=gardenSection(moved);
- const old=(originalState?.objects||state.objects).find(o=>o.id===draggedId)||moved;
- const oldCenter=old[key]+old[size]/2;
- const wantedCenter=(horizontal?targetX:targetY)+old[size]/2;
- const delta=wantedCenter-oldCenter;
- if(Math.abs(delta)<.12)return false;
- const overlapBand=o=>Math.min(o[cross]+o[crossSize],old[cross]+old[crossSize])-Math.max(o[cross],old[cross])>.04;
+ const key=axis==='x'?'x':'y',size=axis==='x'?'width':'length';
+ const cross=axis==='x'?'y':'x',crossSize=axis==='x'?'length':'width';
+ const sameBand=o=>Math.min(o[cross]+o[crossSize],moved[cross]+moved[crossSize])-Math.max(o[cross],moved[cross])>.05;
  const items=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===lane&&
-  (o.rotation||0)%180===0&&overlapBand(o)&&
+  (o.rotation||0)%180===0&&sameBand(o)&&
   (o.perennial||moved.perennial||String(o.year)===String(moved.year)))
   .sort((a,b)=>a[key]-b[key]||a.id-b.id);
  const from=items.findIndex(o=>o.id===draggedId);
  if(from<0||items.length<2)return false;
  const others=items.filter(o=>o.id!==draggedId);
- // Het middelpunt van het doelvak bepaalt de nieuwe volgorde.
- // Een extra drempel van 0.12 m voorkomt onbedoeld wisselen bij tikken.
- let to=others.filter(o=>o[key]+o[size]/2<wantedCenter).length;
- if(to===from){
-   const neighbor=others[delta>0?from:from-1];
-   if(!neighbor)return false;
-   const boundary=neighbor[key]+neighbor[size]/2;
-   if(delta>0&&wantedCenter>boundary-.12)to=from+1;
-   else if(delta<0&&wantedCenter<boundary+.12)to=from-1;
- }
- if(to===from)return false;
- const sequence=[...others.slice(0,to),moved,...others.slice(to)];
- const saved=items.map(o=>({o,x:o.x,y:o.y}));
- const gap=.005;
- const total=sequence.reduce((sum,o)=>sum+o[size],0)+gap*(sequence.length-1);
- const lower=horizontal?(lane==='A'?.5:5.5):0;
- const upper=horizontal?lower+5:state.length;
+ const target=axis==='x'?desiredX:desiredY;
+ const at=others.filter(o=>o[key]+o[size]/2<target+moved[size]/2).length;
+ if(at===from)return false;
+ const ordered=[...others.slice(0,at),moved,...others.slice(at)];
+ const originals=items.map(o=>({o,x:o.x,y:o.y}));
+ const gap=.01;
+ const total=ordered.reduce((n,o)=>n+o[size],0)+gap*(ordered.length-1);
+ const lower=axis==='x'?(lane==='A'?.5:5.5):0;
+ const upper=axis==='x'?lower+5:state.length;
  if(total>upper-lower+.00001)return false;
- const ids=new Set(items.map(o=>o.id));
+ const movingIds=new Set(items.map(o=>o.id));
  const first=Math.min(...items.map(o=>o[key]));
  const starts=[Math.max(lower,Math.min(first,upper-total)),lower,upper-total];
- for(let st=lower;st<=upper-total+.001;st+=.1)starts.push(st);
- for(const st of starts){
-  let pos=st;
-  for(const o of sequence){o[key]=Math.round(pos*10000)/10000;pos+=o[size]+gap}
+ for(let v=lower;v<=upper-total+.0001;v+=.2)starts.push(v);
+ for(const start of starts){
+  let pos=start;
+  for(const o of ordered){o[key]=Math.round(pos*1000)/1000;pos+=o[size]+gap}
   const valid=items.every(o=>{
    const poly=polygon(o),eps=.00001;
-   if(poly.some(pt=>pt.x<-eps||pt.y<-eps||pt.x>state.width+eps||pt.y>state.length+eps))return false;
-   if(![.5,5.5].some(left=>poly.every(pt=>pt.x>=left-eps&&pt.x<=left+5+eps)))return false;
-   return !state.objects.some(q=>!ids.has(q.id)&&
-     !(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year)&&
-     polygonsOverlap(poly,polygon(q)));
-  })&&items.every((o,i)=>items.slice(i+1).every(q=>!polygonsOverlap(polygon(o),polygon(q))));
-  if(valid)return true;
+   if(poly.some(q=>q.x<-eps||q.y<-eps||q.x>state.width+eps||q.y>state.length+eps))return false;
+   if(![.5,5.5].some(left=>poly.every(q=>q.x>=left-eps&&q.x<=left+5+eps)))return false;
+   return !state.objects.some(q=>!movingIds.has(q.id)&&
+    !(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year)&&
+    polygonsOverlap(poly,polygon(q)));
+  });
+  if(valid&&items.every((o,i)=>items.slice(i+1).every(q=>!polygonsOverlap(polygon(o),polygon(q)))))return true;
  }
- for(const {o,x,y} of saved){o.x=x;o.y=y}
+ for(const {o,x,y} of originals){o.x=x;o.y=y}
+ return false;
+}
+
+// v2.1.3: de vinger/muis bepaalt een DOELPOSITIE. Een looppad of
+// strookgrens mag onderweg worden gepasseerd; alleen de eindplek telt.
+function dragDestination(d,ev){
+ const p=point(ev);if(!p)return;
+ const dx=p.x-d.start.x,dy=p.y-d.start.y;
+ d.targetX=Math.round((d.x+dx)*100)/100;
+ d.targetY=Math.round((d.y+dy)*100)/100;
+ if(Math.hypot(dx,dy)>.08)d.moved=true;
+}
+function placeDraggedBed(d){
+ const o=state.objects.find(x=>x.id===d.id);
+ if(!o)return false;
+ const tx=d.targetX,ty=d.targetY;
+ const original={x:o.x,y:o.y};
+ // Eerst rechtstreeks naar de eindplek, dus óók over een looppad heen
+ // en van strook A naar strook B, als de eindplek vrij is.
+ if(fits({...o,x:tx,y:ty})){o.x=tx;o.y=ty;return true}
+ // Bij het overzetten naar A/B: zoek in de nieuwe strook naar een
+ // vrije positie op de gewenste hoogte. Geen bestaande vakken aanpassen.
+ if(o.type==='bed'){
+  const centers=[3,8],targetCenter=tx+o.width/2;
+  const destinationLane=centers.reduce((best,c,i)=>Math.abs(c-targetCenter)<Math.abs(centers[best]-targetCenter)?i:best,0);
+  const left=destinationLane===0?.5:5.5;
+  const width=dims(o).w;
+  if(width<=5){
+   const preferredX=Math.max(left,Math.min(tx,left+5-width));
+   const xCandidates=[preferredX,left,left+5-width];
+   const yCandidates=[ty];
+   for(let distance=.1;distance<=state.length;distance+=.2){
+    yCandidates.push(ty-distance,ty+distance);
+   }
+   for(const y of yCandidates){
+    if(y<0||y+dims(o).h>state.length)continue;
+    for(const x of xCandidates){
+     if(fits({...o,x,y})){o.x=Math.round(x*100)/100;o.y=Math.round(y*100)/100;return true}
+    }
+   }
+  }
+  // Als het doel bezet is: de vakken in dezelfde strook herschikken.
+  // Een looppad blijft op zijn plaats; een vak kan wel over het pad
+  // heen naar een vrije plek worden gezet.
+  if(reorderBedsDuringDrag(o.id,tx,ty,Math.abs(tx-d.x)>Math.abs(ty-d.y)?'x':'y'))return true;
+ }
+ o.x=original.x;o.y=original.y;
  return false;
 }
 svg.addEventListener('pointerdown',e=>{
@@ -607,51 +638,31 @@ svg.addEventListener('pointerdown',e=>{
  selectedCell=targetCell?{i:Number(targetCell.getAttribute('data-row')),j:Number(targetCell.getAttribute('data-col'))}:null;
  const o=state.objects.find(x=>x.id===id);
  if(pendingAssignment!==null&&o?.type==='bed'){
-  const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return;
+  const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return
  }
- const startPoint=point(e);if(!o||!startPoint)return;
- drag={id,pointerId:e.pointerId,start:startPoint,x:o.x,y:o.y,original:clone(state),
-  moved:false,targetX:o.x,targetY:o.y,axis:null};
+ const pt=point(e);if(!o||!pt)return;
+ drag={id,pointerId:e.pointerId,start:pt,x:o.x,y:o.y,
+  targetX:o.x,targetY:o.y,moved:false,original:clone(state)};
  try{svg.setPointerCapture(e.pointerId)}catch{}
  paint();
 });
 svg.addEventListener('pointermove',e=>{
  if(!drag||e.pointerId!==drag.pointerId)return;
- const p=point(e),o=state.objects.find(x=>x.id===drag.id);
- if(!p||!o)return;
- const dx=p.x-drag.start.x,dy=p.y-drag.start.y;
- drag.targetX=Math.round((drag.x+dx)*100)/100;
- drag.targetY=Math.round((drag.y+dy)*100)/100;
- drag.axis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
- if(Math.hypot(dx,dy)>.12)drag.moved=true;
- if(!drag.moved)return;
- // Vrije beweging kan meteen; bij botsingen wacht het wisselen tot loslaten.
- const target={...o,x:drag.targetX,y:drag.targetY};
- if(fits(target)){o.x=target.x;o.y=target.y;paint()}
+ dragDestination(drag,e);
+ // Geen blokkering tijdens het slepen; de eindpositie wordt bij loslaten
+ // bepaald. Hierdoor werkt slepen op kleine telefoons consistenter.
 });
 function endDrag(e){
  if(!drag||(e&&e.pointerId!==undefined&&e.pointerId!==drag.pointerId))return;
  const d=drag;drag=null;
- const o=state.objects.find(x=>x.id===d.id);
- if(o&&d.moved){
-  // Herstel eerst de originele posities. Daarna wordt één volledige
-  // herschikking getest: eerst de dominante as, dan de andere as.
-  state.objects=d.original.objects.map(obj=>clone(obj));
-  const preferred=d.axis||'y',alternative=preferred==='x'?'y':'x';
-  let rearranged=reorderBedsDuringDrag(d.id,d.targetX,d.targetY,preferred,d.original);
-  if(!rearranged)rearranged=reorderBedsDuringDrag(d.id,d.targetX,d.targetY,alternative,d.original);
-  if(!rearranged){
-   const current=state.objects.find(x=>x.id===d.id);
-   if(current&&fits({...current,x:d.targetX,y:d.targetY})){
-    current.x=d.targetX;current.y=d.targetY;
-   }
-  }
-  const current=state.objects.find(x=>x.id===d.id);
-  const changed=rearranged||(current&&(current.x!==d.x||current.y!==d.y));
-  if(changed){
+ if(e&&e.type==='pointerup')dragDestination(d,e);
+ if(d.moved){
+  // Voorkom dat tussenstappen de plaatsing blokkeren.
+  const ok=placeDraggedBed(d);
+  if(ok){
    history.push(d.original);if(history.length>40)history.shift();
    storeHistory();updateUndo();save();
-  }
+  }else notify('Op de gekozen plek is geen ruimte voor dit vak');
   paint();
  }
  try{if(svg.hasPointerCapture(d.pointerId))svg.releasePointerCapture(d.pointerId)}catch{}

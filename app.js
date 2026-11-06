@@ -240,6 +240,7 @@ function renderEditor(){
  }
  $('perennialEditorRow').hidden=o.type!=='bed';$('objPerennial').checked=!!o.perennial;
  for(const [id,key] of [['objWidth','length'],['objLength','width'],['objX','x'],['objY','y']])$(id).value=o[key];
+ for(const id of ['splitTripleAcross','splitTripleAlong','clearBedSplits'])$(id).hidden=o.type!=='bed';
  $('split').hidden=o.type!=='bed';if($('splitWidth'))$('splitWidth').hidden=o.type!=='bed';$('editorSubsectionButtons').hidden=o.type!=='bed';$('sectionsWrap').hidden=!(o.type==='bed'&&editorSubsection==='distribution');$('cultivationWrap').hidden=!(o.type==='bed'&&editorSubsection==='cultivation');
  $('sections').replaceChildren();
   if(o.type==='bed'&&!selectedCell){const tip=document.createElement('p');tip.className='hint';tip.textContent='Kies hieronder bij het juiste vak “Teeltgegevens openen”. Je ziet dan alleen de rassen van dat vak.';$('sections').append(tip)}
@@ -336,6 +337,55 @@ function splitWidth(i=0,j=0){
  checkpoint();const half=c.width/2;c.width=half;
  r.cols.splice(j+1,0,{crop:0,width:half,varieties:[]});selectedCell={i,j:j+1};save();paint();
 }
+// Splits het aangetikte vak in drie gelijke delen; behoud de eerste
+// groente/naam, en maak de twee nieuwe vakken leeg.
+function splitIntoThree(along){
+ const o=state.objects.find(x=>x.id===selected);
+ if(!o||o.type!=='bed')return;
+ const i=selectedCell?.i??0,j=selectedCell?.j??0;
+ const longIsWidth=o.width>o.length;
+ const splitVertical=along?!longIsWidth:longIsWidth;
+ if(splitVertical){
+  const rows=sections(o),r=rows[i];
+  if(!r||r.length<.6){alert('Dit vak is te klein om dwars in drie delen van minimaal 20 cm te splitsen.');return}
+  checkpoint();
+  const part=r.length/3;
+  r.length=part;
+  rows.splice(i+1,0,
+   {length:part,cols:clone(r.cols).map(c=>({...c,crop:0,label:'',varieties:[]}))},
+   {length:part,cols:clone(r.cols).map(c=>({...c,crop:0,label:'',varieties:[]}))});
+  selectedCell={i,j:0};
+ }else{
+  const r=sections(o)[i],cell=r?.cols[j];
+  if(!cell||cell.width<.6){alert('Dit vak is te klein om in drie delen van minimaal 20 cm te splitsen.');return}
+  checkpoint();
+  const part=cell.width/3;
+  cell.width=part;
+  r.cols.splice(j+1,0,
+   {crop:0,label:'',width:part,varieties:[]},
+   {crop:0,label:'',width:part,varieties:[]});
+  selectedCell={i,j};
+ }
+ save();paint();
+}
+$('splitTripleAcross').onclick=()=>splitIntoThree(false);
+$('splitTripleAlong').onclick=()=>splitIntoThree(true);
+$('clearBedSplits').onclick=()=>{
+ const o=state.objects.find(x=>x.id===selected);
+ if(!o||o.type!=='bed')return;
+ const rows=sections(o),first=rows[0]?.cols[0];
+ if(!first)return;
+ if(rows.length===1&&rows[0].cols.length===1){notify('Dit vak is niet opgesplitst');return}
+ if(!confirm('Alle splitsingen in deze strook opheffen? De groente, naam en teeltgegevens van het eerste vak blijven bewaard. Gegevens van de andere vakdelen worden verwijderd.'))return;
+ checkpoint();
+ const restored=clone(first);
+ restored.width=o.width;
+ const key=String(o.perennialSource||state.year);
+ // Alleen de verdeling van het huidige tuinjaar herstellen.
+ o.sections[key]=[{length:o.length,cols:[restored]}];
+ selectedCell={i:0,j:0};
+ save();paint();notify('Splitsingen opgeheven; gegevens van het eerste vak behouden');
+};
 function chooseMergedCrop(first,second){
  const options=crops.map(([name],i)=>i+': '+name).join('\n');
  const answer=prompt('Welke groente krijgt het samengevoegde vak? Vul het nummer in.\n'+options,String(first));

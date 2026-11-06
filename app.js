@@ -183,6 +183,41 @@ $('editSelectedBed').onclick=()=>{
   const quick=$('quickEdit');if(quick&&!quick.hidden){setTimeout(()=>quick.scrollIntoView({behavior:'smooth',block:'nearest'}),200)}
  }
 };
+let editorSubsection=null;
+function setEditorSubsection(which){
+ editorSubsection=editorSubsection===which?null:which;
+ const o=state.objects.find(x=>x.id===selected);
+ $('sectionsWrap').hidden=!(editorSubsection==='distribution'&&o?.type==='bed');
+ $('cultivationWrap').hidden=!(editorSubsection==='cultivation'&&o?.type==='bed');
+ for(const [id,value] of [['toggleDistribution','distribution'],['toggleCultivation','cultivation']]){
+  $(id).setAttribute('aria-expanded',String(editorSubsection===value));
+ }
+ if(editorSubsection==='cultivation')renderCultivationPanel();
+}
+$('toggleDistribution').onclick=()=>setEditorSubsection('distribution');
+$('toggleCultivation').onclick=()=>setEditorSubsection('cultivation');
+$('saveDistribution').onclick=()=>{save();notify('✓ Verdeling opgeslagen');setEditorSubsection('distribution')};
+$('saveCultivation').onclick=()=>{
+ const buttons=[...$('cultivationContent').querySelectorAll('.varietyCard button')].filter(b=>b.textContent.includes('Teeltgegevens opslaan'));
+ buttons.forEach(b=>b.click());
+ save();notify('✓ Teeltgegevens opgeslagen');
+};
+$('cultivationCell').onchange=()=>{
+ const [i,j]=$('cultivationCell').value.split(':').map(Number);
+ selectedCell={i,j};renderCultivationPanel();
+};
+function renderCultivationPanel(){
+ const o=state.objects.find(x=>x.id===selected);
+ const picker=$('cultivationCell'),root=$('cultivationContent');
+ picker.replaceChildren();root.replaceChildren();
+ if(!o||o.type!=='bed')return;
+ const rows=sections(o);
+ rows.forEach((r,i)=>r.cols.forEach((cell,j)=>picker.append(new Option(`Vak ${i+1}.${j+1} · ${crops[cell.crop]?.[0]||'Geen groente'}`,`${i}:${j}`))));
+ let i=selectedCell?.i??0,j=selectedCell?.j??0;
+ if(!rows[i]?.cols[j]){i=0;j=0}
+ picker.value=`${i}:${j}`;
+ const cell=rows[i]?.cols[j];if(cell)root.append(renderVarietyEditor(cell,i,j));
+}
 function renderEditor(){
  const o=state.objects.find(x=>x.id===selected && visible(x));
  $('editor').hidden=!o;$('editorEmpty').hidden=!!o;
@@ -205,7 +240,7 @@ function renderEditor(){
  }
  $('perennialEditorRow').hidden=o.type!=='bed';$('objPerennial').checked=!!o.perennial;
  for(const [id,key] of [['objWidth','length'],['objLength','width'],['objX','x'],['objY','y']])$(id).value=o[key];
- $('split').hidden=o.type!=='bed';if($('splitWidth'))$('splitWidth').hidden=o.type!=='bed';$('sectionsWrap').hidden=o.type!=='bed';
+ $('split').hidden=o.type!=='bed';if($('splitWidth'))$('splitWidth').hidden=o.type!=='bed';$('editorSubsectionButtons').hidden=o.type!=='bed';$('sectionsWrap').hidden=!(o.type==='bed'&&editorSubsection==='distribution');$('cultivationWrap').hidden=!(o.type==='bed'&&editorSubsection==='cultivation');
  $('sections').replaceChildren();
   if(o.type==='bed'&&!selectedCell){const tip=document.createElement('p');tip.className='hint';tip.textContent='Kies hieronder bij het juiste vak “Teeltgegevens openen”. Je ziet dan alleen de rassen van dat vak.';$('sections').append(tip)}
  if(o.type!=='bed')return;
@@ -240,10 +275,11 @@ function renderEditor(){
    };b.append(inp);
    const info=document.createElement('div');info.className='cellInfo';info.textContent=`${(r.length*c.width).toFixed(2)} m²`;
    const splitW=document.createElement('button');splitW.className='secondary smallButton';splitW.textContent='✂ Deel deze breedtemaat';splitW.onclick=()=>splitWidth(i,j);
-   const choose=document.createElement('button');choose.className='secondary smallButton';choose.textContent=selectedCell?.i===i&&selectedCell?.j===j?'✓ Gegevens van dit vak geopend':'🌱 Teeltgegevens openen';choose.onclick=()=>{selectedCell={i,j};paint()};row.append(a,b,info,splitW,choose);if(j<r.cols.length-1){const mergeW=document.createElement('button');mergeW.className='secondary smallButton';mergeW.textContent='↔ Samenvoegen met volgend vak';mergeW.onclick=()=>mergeWidth(i,j);row.append(mergeW)}if(selectedCell?.i===i&&selectedCell?.j===j){row.classList.add('selectedCell')}group.append(row);if(selectedCell?.i===i&&selectedCell?.j===j)group.append(renderVarietyEditor(c,i,j));
+   const choose=document.createElement('button');choose.className='secondary smallButton';choose.textContent=selectedCell?.i===i&&selectedCell?.j===j?'✓ Gegevens van dit vak geopend':'🌱 Teeltgegevens openen';choose.onclick=()=>{selectedCell={i,j};paint()};row.append(a,b,info,splitW,choose);if(j<r.cols.length-1){const mergeW=document.createElement('button');mergeW.className='secondary smallButton';mergeW.textContent='↔ Samenvoegen met volgend vak';mergeW.onclick=()=>mergeWidth(i,j);row.append(mergeW)}if(selectedCell?.i===i&&selectedCell?.j===j){row.classList.add('selectedCell')}group.append(row);/* Teeltgegevens staan nu in het afzonderlijke paneel. */
   });
   $('sections').append(group);
  });
+ if(editorSubsection==='cultivation')renderCultivationPanel();
 }
 function renderVarietyEditor(c,i,j){
  const wrap=document.createElement('div');wrap.className='varietyEditor';
@@ -323,7 +359,7 @@ function mergeLength(i){
  const id=chooseMergedCrop(a.cols[0].crop,b.cols[0].crop);if(id===null)return;
  if((a.cols.some(c=>cellVarieties(c).length)||b.cols.some(c=>cellVarieties(c).length))&&!confirm('Rassen uit beide lengtedelen worden samengevoegd voor zover ze bij het gekozen gewas horen. Doorgaan?'))return;checkpoint();a.length+=b.length;a.cols.forEach((c,j)=>{c.varieties=[...cellVarieties(c),...cellVarieties(b.cols[j])].filter(v=>v.crop===id);c.crop=id});rows.splice(i+1,1);save();paint();
 }
-function updateObj(patch){previousRotation=null;const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){notify('Past niet binnen de tuin of overlapt een ander object');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
+function updateObj(patch){previousRotation=null;const o=state.objects.find(x=>x.id===selected);if(!o)return;const test={...o,...patch};if(test.length<.2||test.width<.2||!fits(test)){alert('Onvoldoende ruimte: het vak valt buiten de tuin of overlapt een ander object. De wijziging is niet opgeslagen.');paint();return}checkpoint();Object.assign(o,patch);if(o.type==='bed'){Object.values(o.sections||{}).forEach(arr=>{if('length'in patch){const sum=arr.reduce((a,s)=>a+s.length,0);if(sum>0)arr.forEach(s=>s.length*=o.length/sum)}if('width'in patch){arr.forEach(r=>{if(!r.cols)r.cols=[{crop:r.crop||0,width:o.width}];const sum=r.cols.reduce((a,c)=>a+c.width,0);if(sum>0)r.cols.forEach(c=>c.width*=o.width/sum)})}})}save();paint()}
 function addObj(type){const obj={id:state.nextId,type,year:type==='bed'?state.year:null,x:.3,y:.3,length:type==='bed'?Math.min(5,state.length):Math.min(4,state.length),width:type==='bed'?Math.min(1.2,state.width):Math.min(.6,state.width),rotation:0};if(type==='bed')obj.sections={2026:[{crop:0,length:obj.length}],2027:[{crop:0,length:obj.length}]};let found=false;for(let y=0;y<=state.length;y+=.25){for(let x=0;x<=state.width;x+=.25){obj.x=+x.toFixed(2);obj.y=+y.toFixed(2);if(fits(obj,null)){found=true;break}}if(found)break}if(!found){notify('Geen vrije ruimte: verklein of verplaats eerst een object');return}checkpoint();state.nextId++;state.objects.push(obj);selected=obj.id;save();paint();$('editPanel').scrollIntoView({behavior:'smooth',block:'nearest'})}
 // Eenvoudige invoer: één scherm en automatische plaatsing in A of B.
 function refreshSimpleCrops(){
@@ -539,9 +575,9 @@ $('undo').onclick=undoGardenStep;
 $('advancedSave').onclick=()=>{
  const o=state.objects.find(x=>x.id===selected);if(!o)return;
  const patch={length:Number($('objWidth').value),width:Number($('objLength').value),x:Number($('objX').value),y:Number($('objY').value)};
- if(Object.values(patch).some(v=>!Number.isFinite(v))){notify('Controleer de ingevoerde getallen');return}
+ if(Object.values(patch).some(v=>!Number.isFinite(v))){alert('Controleer de ingevoerde getallen. De wijziging is niet opgeslagen.');return}
  const test={...o,...patch};
- if(patch.length<.2||patch.width<.2||!fits(test)){notify('Deze afmetingen of positie passen niet in de tuin');return}
+ if(patch.length<.2||patch.width<.2||!fits(test)){alert('Onvoldoende ruimte voor deze afmetingen of positie. Het vak valt buiten de tuingrens of overlapt een ander vak of looppad. De wijziging is niet opgeslagen.');return}
  updateObj(patch);$('advancedTools').hidden=true;$('toggleAdvanced').setAttribute('aria-expanded','false');$('toggleAdvanced').textContent='⚙ Geavanceerd bewerken';notify('✓ Wijzigingen opgeslagen');
 };
 function resizeGarden(){const length=Number($('gardenWidth').value),width=Number($('gardenLength').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}

@@ -236,3 +236,12 @@ main,.panel{overflow:visible}
 
 /* 2.1.5: alle actieknoppen exact dezelfde groene kleur */
 #editSelectedBed,#addBed{background:#2d6547!important;border-color:#2d6547!important;color:#fff!important}
+
+/* 2.1.8: afzonderlijke, standaard gesloten bewerkpanelen */
+.editorSubsectionButtons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;margin-bottom:10px}
+.editorSubsectionButton{background:#2d6547!important;color:#fff!important;border-color:#2d6547!important;min-height:46px;white-space:normal}
+.editorSubsectionPanel{border:1px solid #cbdccf;border-radius:10px;padding:12px;margin-top:10px}
+.editorSubsectionPanel[hidden]{display:none!important}
+.editorSubsectionPanel .toolbar button.darkGreenAction{background:#2d6547;color:#fff}
+#cultivationCell{width:100%;margin-bottom:12px}
+@media(max-width:380px){.editorSubsectionButtons{gap:6px}.editorSubsectionButton{font-size:12px;padding:8px 5px}}

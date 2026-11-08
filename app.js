@@ -1,5 +1,5 @@
 'use strict';
-// Mijn Slimme Moestuin 2.2.3 — jaarkopie en Verschuifvak
+// Mijn Slimme Moestuin 2.2.4 — jaarkopie en Verschuifvak
 const KEY='mijn-slimme-moestuin-v1';
 // Geen automatische opslag bij het openen: beschermt bestaande tuinplannen.
 const crops=[['Leeg','#d5d8c9'],['Aardappel','#a9c984'],['Wortel','#edc27b'],['Ui','#b9c7ec'],['Bonen','#9ed2af'],['Kool','#d8a6bb'],['Sla','#b6db86'],['Prei','#a4c9d4'],['Biet','#d6a0a0'],['Spinazie','#7ebf8e']];
@@ -119,25 +119,6 @@ function sections(o){
 }
 function areaRows(o){return sections(o).reduce((sum,r)=>sum+r.length*r.cols.reduce((s,c)=>s+c.width,0),0)}
 function gardenSection(o){if(o.parked)return 'V';const d=dims(o),mid=o.x+d.w/2;return mid<BUFFER_LEFT?'A':'B'}
-// Voeg op de naad tekenruimte toe zonder de afmetingen van het pad te wijzigen.
-function projectPath(points,gap,crosses,closed){
- if(!gap)return points;
- const right=p=>p.x>BUFFER_LEFT;
- const shift=p=>({x:p.x+(right(p)?gap:0),y:p.y});
- if(!crosses){
-  const offset=points.some(p=>p.x>BUFFER_LEFT+.00001)?gap:0;
-  return points.map(p=>({x:p.x+offset,y:p.y}));
- }
- const result=[];
- points.forEach((p,i)=>{
-  result.push(shift(p));
-  const q=points[i+1]||(closed?points[0]:null);
-  if(!q||right(p)===right(q))return;
-  const y=p.y+(q.y-p.y)*(BUFFER_LEFT-p.x)/(q.x-p.x);
-  result.push({x:BUFFER_LEFT+(right(p)?gap:0),y},{x:BUFFER_LEFT+(right(q)?gap:0),y});
- });
- return result;
-}
 function paint(){const svg=$('map');svg.replaceChildren();const NS='http://www.w3.org/2000/svg';const add=(tag,attrs,parent=svg)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));parent.appendChild(e);return e};const pad=1;
 const gap=bufferOpen()?BUFFER_WIDTH:0;
 const mapWidth=state.width+gap;
@@ -158,22 +139,20 @@ if(gap){
  }
 }
 for(let x=0;x<=mapWidth;x++){add('line',{x1:x+pad,y1:pad,x2:x+pad,y2:pad+state.length,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}for(let y=0;y<=state.length;y++){add('line',{x1:pad,y1:y+pad,x2:pad+mapWidth,y2:y+pad,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}
-function drawPath(o,parent=svg){
+function drawPath(o,parent=svg,shift=0){
  const corners=polygon(o);
- const crosses=o.x<BUFFER_LEFT-.00001&&o.x+dims(o).w>BUFFER_LEFT+.00001;
- const points=(vertices,closed)=>projectPath(vertices,gap,crosses,closed)
-  .map(({x,y})=>`${pad+x},${pad+y}`).join(' ');
+ const points=vertices=>vertices.map(({x,y})=>`${pad+x+shift},${pad+y}`).join(' ');
  const g=add('g',{'data-id':o.id,'data-path-outline':'','cursor':'grab'},parent);
  const active=selected===o.id;
- add('polygon',{points:points(corners,true),fill:'#eee8d8',
+ add('polygon',{points:points(corners),fill:'#eee8d8',
   stroke:active?'#20583c':'#8e957e','stroke-width':active?.045:.025},g);
  const middle=(a,b)=>({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
  const r=rotationInfo(o);
  const ends=r.w>=r.h?[middle(corners[0],corners[3]),middle(corners[1],corners[2])]:
   [middle(corners[0],corners[1]),middle(corners[3],corners[2])];
- add('polyline',{points:points(ends,false),fill:'none',stroke:'#9c927d',
+ add('polyline',{points:points(ends),fill:'none',stroke:'#9c927d',
   'stroke-width':'.045','stroke-dasharray':'.18 .16','pointer-events':'none'},g);
- const label=add('text',{x:pad+o.x+(gap&&o.x>=BUFFER_LEFT?gap:0)+.1,y:pad+o.y+.27,
+ const label=add('text',{x:pad+o.x+shift+.1,y:pad+o.y+.27,
   'font-size':'.19',fill:'#1f432b','pointer-events':'none'},g);
  label.textContent=`P${String(o.id).padStart(2,'0')}`;
  return g;
@@ -221,7 +200,35 @@ function drawObject(o,x,parent=svg){
 const objects=activeObjects();
 const draggedPath=drag?.path&&drag.plan===state&&drag.original.year===state.year?
  objects.find(o=>o.id===drag.id):null;
-for(const o of objects)if(o.type==='path'&&o!==draggedPath)drawPath(o);
+// Alleen bij een pad over de grens knippen we de tekening in twee delen.
+const pathLayers=gap?[0,gap].map(shift=>{
+ const id=shift?'path-clip-b':'path-clip-a';
+ const clip=add('clipPath',{id});
+ add('rect',{x:pad+(shift?BUFFER_LEFT+gap:0),y:pad,
+  width:shift?Math.max(0,state.width-BUFFER_LEFT):BUFFER_LEFT,height:state.length},clip);
+ return add('g',{'clip-path':`url(#${id})`});
+}):null;
+for(const o of objects){
+ if(o.type!=='path'||o===draggedPath)continue;
+ const crosses=o.x<BUFFER_LEFT-.00001&&o.x+dims(o).w>BUFFER_LEFT+.00001;
+ if(!gap||!crosses){
+  drawPath(o,svg,o.x>=BUFFER_LEFT-.00001?gap:0);
+  continue;
+ }
+ drawPath(o,pathLayers[0]);
+ drawPath(o,pathLayers[1],gap);
+ // Een dunne verbindingslijn toont dat beide stukken bij hetzelfde pad horen.
+ const corners=polygon(o),heights=[];
+ corners.forEach((p,i)=>{
+  const q=corners[(i+1)%corners.length];
+  if((p.x<BUFFER_LEFT)===(q.x<BUFFER_LEFT))return;
+  heights.push(p.y+(q.y-p.y)*(BUFFER_LEFT-p.x)/(q.x-p.x));
+ });
+ const y=pad+(Math.min(...heights)+Math.max(...heights))/2;
+ add('line',{'data-id':o.id,'data-path-connection':'',x1:pad+BUFFER_LEFT,y1:y,
+  x2:pad+BUFFER_LEFT+gap,y2:y,stroke:'#81745f','stroke-width':'.045',
+  'stroke-dasharray':'.15 .2',cursor:'grab'});
+}
 for(const o of objects){
  if(o.type==='path')continue;
  const x=o.parked?BUFFER_LEFT+o.x:o.x+(gardenSection(o)==='B'?gap:0);
@@ -229,7 +236,8 @@ for(const o of objects){
 }
 if(draggedPath){
  const preview=add('g',{'data-path-preview':'','pointer-events':'none','opacity':'.8'});
- drawPath(draggedPath,preview);
+ const gripOffset=drag.start.x-pathMapX(drag.start.x,drag.open);
+ drawPath(draggedPath,preview,gripOffset);
  drag.preview=preview;
 }
 renderPlanningControls();

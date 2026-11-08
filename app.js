@@ -1,4 +1,5 @@
 'use strict';
+// Mijn Slimme Moestuin 2.2.1 — jaarkopie en Verschuifvak
 const KEY='mijn-slimme-moestuin-v1';
 // Geen automatische opslag bij het openen: beschermt bestaande tuinplannen.
 const crops=[['Leeg','#d5d8c9'],['Aardappel','#a9c984'],['Wortel','#edc27b'],['Ui','#b9c7ec'],['Bonen','#9ed2af'],['Kool','#d8a6bb'],['Sla','#b6db86'],['Prei','#a4c9d4'],['Biet','#d6a0a0'],['Spinazie','#7ebf8e']];
@@ -57,7 +58,13 @@ $('mapZoom').addEventListener('input',e=>{mapZoom=Number(e.target.value);applyZo
 $('zoomOut').onclick=()=>{mapZoom=Math.max(40,mapZoom-10);applyZoom()};
 
 $('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+10);applyZoom()};
-const visible=o=>o.type==='path'||o.perennial||!o.year||o.year===state.year;
+const BUFFER_LEFT=5.5,BUFFER_WIDTH=5;
+const isInYear=(o,year)=>o.type==='path'||o.perennial||
+ (!o.registerOnly&&!o.hiddenYears?.includes(String(year))&&(!o.year||String(o.year)===String(year)));
+const visible=o=>isInYear(o,state.year);
+let openBufferYear=null;
+const parkedBeds=()=>state.objects.filter(o=>o.parked&&visible(o));
+const bufferOpen=()=>openBufferYear===String(state.year)||parkedBeds().length>0;
 const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
 function checkpoint(){history.push(clone(state));if(history.length>40)history.shift();storeHistory();updateUndo()}
@@ -89,13 +96,17 @@ function polygonsOverlap(a,b){
 }
 function fits(o,exclude=o.id){
  const poly=polygon(o),eps=.00001;
- if(poly.some(p=>p.x<-eps||p.y<-eps||p.x>state.width+eps||p.y>state.length+eps))return false;
- if(o.type==='bed'&&!([.5,5.5].some(left=>poly.every(p=>p.x>=left-eps&&p.x<=left+5+eps))))return false;
+ if(poly.some(p=>p.x<-eps||p.y<-eps||p.x>(o.parked?BUFFER_WIDTH:state.width)+eps||p.y>state.length+eps))return false;
+ if(o.parked&&(o.type!=='bed'||o.perennial))return false;
+ if(o.type==='bed'&&!o.parked&&!([.5,5.5].some(left=>poly.every(p=>p.x>=left-eps&&p.x<=left+5+eps))))return false;
  if(o.type==='path'&&poly.some(p=>p.x<.5-eps||p.x>10.5+eps))return false;
- return !state.objects.some(q=>{
-  if(q.id===exclude||(o.type==='path'&&q.type==='path')||(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year))return false;
-  return polygonsOverlap(poly,polygon(q));
- });
+ return !state.objects.some(q=>q.id!==exclude&&samePlacementSpace(o,q)&&polygonsOverlap(poly,polygon(q)));
+}
+function samePlacementSpace(o,q){
+ if(o.registerOnly||q.registerOnly||Boolean(o.parked)!==Boolean(q.parked))return false;
+ if(o.type==='path'&&q.type==='path')return false;
+ if(o.type!=='bed'||q.type!=='bed'||o.perennial||q.perennial)return true;
+ return (!o.year||isInYear(q,o.year))&&(!q.year||isInYear(o,q.year));
 }
 function sections(o){
  if(!o.sections)o.sections={};
@@ -107,16 +118,38 @@ function sections(o){
  return rows;
 }
 function areaRows(o){return sections(o).reduce((sum,r)=>sum+r.length*r.cols.reduce((s,c)=>s+c.width,0),0)}
-function gardenSection(o){const d=dims(o),mid=o.x+d.w/2;return mid<5.5?'A':'B'}
-function paint(){const svg=$('map');svg.replaceChildren();const NS='http://www.w3.org/2000/svg';const add=(tag,attrs,parent=svg)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));parent.appendChild(e);return e};const pad=1;svg.setAttribute('viewBox',`0 0 ${state.width+2*pad} ${state.length+2*pad}`);add('rect',{x:pad,y:pad,width:state.width,height:state.length,fill:'#ded5b9',stroke:'#75866d','stroke-width':'.08'});
+function gardenSection(o){if(o.parked)return 'V';const d=dims(o),mid=o.x+d.w/2;return mid<BUFFER_LEFT?'A':'B'}
+function paint(){const svg=$('map');svg.replaceChildren();const NS='http://www.w3.org/2000/svg';const add=(tag,attrs,parent=svg)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));parent.appendChild(e);return e};const pad=1;
+const gap=bufferOpen()?BUFFER_WIDTH:0;
+const mapWidth=state.width+gap;
+svg.setAttribute('viewBox',`0 0 ${mapWidth+2*pad} ${state.length+2*pad}`);
+add('rect',{x:pad,y:pad,width:mapWidth,height:state.length,fill:'#ded5b9',stroke:'#75866d','stroke-width':'.08'});
 if(state.layout==='AB-30x5'){
  for(const [x,w,fill,label] of [[0,.5,'#d1c5a9',''],[.5,5,'#c6dda9','A'],[5.5,5,'#d1e3b5','B'],[10.5,.5,'#d1c5a9','']]){
-  add('rect',{x:pad+x,y:pad,width:w,height:state.length,fill,stroke:'#8ca17e','stroke-width':'.045'});
-  if(label){const t=add('text',{x:pad+x+w/2,y:pad+state.length/2,'text-anchor':'middle','font-size':'.9','font-weight':'bold',fill:'#416542','pointer-events':'none'});t.textContent=label;}
+  const left=pad+x+(x>=BUFFER_LEFT?gap:0);
+  add('rect',{x:left,y:pad,width:w,height:state.length,fill,stroke:'#8ca17e','stroke-width':'.045'});
+  if(label){const t=add('text',{x:left+w/2,y:pad+state.length/2,'text-anchor':'middle','font-size':'.9','font-weight':'bold',fill:'#416542','pointer-events':'none'});t.textContent=label;}
  }
-} for(let x=0;x<=state.width;x++){add('line',{x1:x+pad,y1:pad,x2:x+pad,y2:pad+state.length,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}for(let y=0;y<=state.length;y++){add('line',{x1:pad,y1:y+pad,x2:pad+state.width,y2:y+pad,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}
-activeObjects().forEach(o=>{
- const g=add('g',{'data-id':o.id,transform:`translate(${pad+o.x} ${pad+o.y})`});
+}
+if(gap){
+ add('rect',{x:pad+BUFFER_LEFT,y:pad,width:gap,height:state.length,fill:'#e8f3e8',stroke:'#39764e','stroke-width':'.07','stroke-dasharray':'.3 .16'});
+ for(const y of [.65,state.length/2]){
+  const title=add('text',{x:pad+BUFFER_LEFT+gap/2,y:pad+y,'text-anchor':'middle','font-size':'.56','font-weight':'bold',fill:'#25563b','pointer-events':'none'});
+  title.textContent='Verschuifvak';
+ }
+}
+for(let x=0;x<=mapWidth;x++){add('line',{x1:x+pad,y1:pad,x2:x+pad,y2:pad+state.length,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}for(let y=0;y<=state.length;y++){add('line',{x1:pad,y1:y+pad,x2:pad+mapWidth,y2:y+pad,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}
+// Een gedeeld looppad over de grens wordt aan beide zijden van de tijdelijke strook getekend.
+const paths=gap?[0,gap].map((shift,index)=>{
+ const id=`garden-path-clip-${index}`;
+ const left=index?BUFFER_LEFT+gap:0;
+ const width=index?Math.max(0,state.width-BUFFER_LEFT):BUFFER_LEFT;
+ const clip=add('clipPath',{id});
+ add('rect',{x:pad+left,y:pad,width,height:state.length},clip);
+ return {shift,group:add('g',{'clip-path':`url(#${id})`})};
+}):null;
+function drawObject(o,x,parent=svg){
+ const g=add('g',{'data-id':o.id,transform:`translate(${pad+x} ${pad+o.y})`},parent);
  const d=dims(o),r=rotationInfo(o),active=selected===o.id;
  const shape=r.localAngle?add('g',{transform:`translate(${d.w/2} ${d.h/2}) rotate(${r.localAngle}) translate(${-r.w/2} ${-r.h/2})`},g):g;
  const shapeW=r.w,shapeH=r.h;
@@ -158,7 +191,16 @@ activeObjects().forEach(o=>{
  }
  const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},shape);
  t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
+}
+activeObjects().forEach(o=>{
+ if(paths&&o.type==='path'){
+  for(const {shift,group} of paths)drawObject(o,o.x+shift,group);
+ }else{
+  const x=o.parked?BUFFER_LEFT+o.x:o.x+(gardenSection(o)==='B'?gap:0);
+  drawObject(o,x);
+ }
 });
+renderPlanningControls();
 $('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals();renderLibrary();renderRegister();renderCatalog()}
 function renderTotals(){
  const sums=new Map();let used=0;
@@ -223,7 +265,7 @@ function renderEditor(){
  $('editor').hidden=!o;$('editorEmpty').hidden=!!o;
  $('editSelectedBed').hidden=!o;
  $('editSelectedBed').textContent=o?.type==='path'?'Bewerken geselecteerd looppad':'Bewerken geselecteerde strook';
- $('editTitle').textContent=o?(o.type==='bed'?`Tuingedeelte ${gardenSection(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
+ $('editTitle').textContent=o?(o.type==='bed'?`${o.parked?'Verschuifvak':'Tuingedeelte '+gardenSection(o)} · Strook S${String(o.id).padStart(2,'0')}`:`Looppad P${String(o.id).padStart(2,'0')}`):'Selecteer een strook of pad';
  if(!o)return;
  const quick=$('quickEdit');quick.hidden=o.type!=='bed';
  if(o.type==='bed'){
@@ -432,8 +474,7 @@ $('simpleCreate').onclick=()=>{
  let found=false;
  // Voorspelbaar: probeer eerst direct ONDER het laatste vak in A of B.
  // Als daar geen ruimte is, zoek dan de eerste vrije plek vanaf boven.
- const inPart=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===part&&
-  (o.perennial||String(o.year)===String(state.year)));
+ const inPart=activeObjects().filter(o=>o.type==='bed'&&gardenSection(o)===part);
  const after=inPart.length?Math.max(...inPart.map(o=>o.y+dims(o).h))+.02:0;
  let fallback=false;
  for(const startY of [after,0]){
@@ -536,8 +577,10 @@ $('pathCreate').onclick=()=>{
 $('copyBed').onclick=()=>{
  const source=state.objects.find(o=>o.id===selected&&visible(o));
  if(!source){notify('Selecteer eerst een groentevak of looppad op de plattegrond');return}
+ if(source.parked){notify('Sleep dit vak eerst terug naar A of B');return}
  const obj=clone(source);
  obj.id=state.nextId;
+ delete obj.hiddenYears;
  // Een kopie hoort bij het huidige tuinjaar. Vaste beplanting wordt bewust
  // niet automatisch overgenomen, zodat kopiëren geen extra vaste plant creëert.
  if(source.type==='bed'){obj.year=state.year;obj.perennial=false;obj.perennialSource=state.year;const sourceRows=clone(sections(source));obj.sections={[state.year]:sourceRows};}
@@ -563,6 +606,7 @@ $('copyBed').onclick=()=>{
 let previousRotation=null;
 function rotateSelected(degrees){
  const o=state.objects.find(x=>x.id===selected);if(!o)return;
+ if(o.perennial){notify('Vaste beplanting blijft op haar plek');return}
  const before=clone(o),old=dims(o),cx=o.x+old.w/2,cy=o.y+old.h/2;
  const test={...o,rotation:((Number(o.rotation)||0)+degrees+360)%360};
  const next=dims(test);
@@ -600,7 +644,7 @@ $('rotate').onclick=()=>rotateSelected(90);
 $('rotate45').onclick=()=>rotateSelected(-33);
 $('rotate15').onclick=()=>rotateSelected(-15);$('rotate7').onclick=()=>rotateSelected(-7.5);
 $('rotatePrevious').onclick=()=>undoGardenStep();
-$('objPerennial').onchange=()=>{const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const before=!!o.perennial,desired=$('objPerennial').checked;if(before===desired)return;const test={...o,perennial:desired};if(desired&&!fits(test)){notify('Kan niet vast worden: dit vak overlapt een vak uit een ander jaar.');$('objPerennial').checked=before;return}checkpoint();o.perennial=desired;if(desired)o.perennialSource=state.year;else{o.year=state.year;const source=String(o.perennialSource||o.year);if(o.sections?.[source]&&!o.sections[state.year])o.sections[state.year]=clone(o.sections[source]);}save();paint();notify(desired?'Vaste beplanting blijft zichtbaar in volgende jaren':'Vak hoort nu alleen bij '+state.year)};
+$('objPerennial').onchange=()=>{const o=state.objects.find(x=>x.id===selected);if(!o||o.type!=='bed')return;const before=!!o.perennial,desired=$('objPerennial').checked;if(before===desired)return;if(desired&&o.parked){$('objPerennial').checked=false;notify('Sleep dit vak eerst terug naar A of B');return}const test={...o,perennial:desired};if(desired&&!fits(test)){notify('Kan niet vast worden: dit vak overlapt een vak uit een ander jaar.');$('objPerennial').checked=before;return}checkpoint();o.perennial=desired;if(desired)o.perennialSource=state.year;else{o.year=state.year;const source=String(o.perennialSource||o.year);if(o.sections?.[source]&&!o.sections[state.year])o.sections[state.year]=clone(o.sections[source]);}save();paint();notify(desired?'Vaste beplanting blijft zichtbaar in volgende jaren':'Vak hoort nu alleen bij '+state.year)};
 // De betekenis van lengte/dwars volgt de langste fysieke zijde, niet de interne veldnaam.
 function splitByDirection(along){
  const o=state.objects.find(x=>x.id===selected);
@@ -626,11 +670,12 @@ $('advancedSave').onclick=()=>{
  const o=state.objects.find(x=>x.id===selected);if(!o)return;
  const patch={length:Number($('objWidth').value),width:Number($('objLength').value),x:Number($('objX').value),y:Number($('objY').value)};
  if(Object.values(patch).some(v=>!Number.isFinite(v))){alert('Controleer de ingevoerde getallen. De wijziging is niet opgeslagen.');return}
+ if(o.perennial&&(patch.x!==o.x||patch.y!==o.y)){notify('Vaste beplanting blijft op haar plek');return}
  const test={...o,...patch};
  if(patch.length<.2||patch.width<.2||!fits(test)){alert('Onvoldoende ruimte voor deze afmetingen of positie. Het vak valt buiten de tuingrens of overlapt een ander vak of looppad. De wijziging is niet opgeslagen.');return}
  updateObj(patch);$('advancedTools').hidden=true;$('toggleAdvanced').setAttribute('aria-expanded','false');$('toggleAdvanced').textContent='⚙ Geavanceerd bewerken';notify('✓ Wijzigingen opgeslagen');
 };
-function resizeGarden(){const length=Number($('gardenWidth').value),width=Number($('gardenLength').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
+function resizeGarden(){const length=Number($('gardenWidth').value),width=Number($('gardenLength').value);if(!Number.isFinite(length)||!Number.isFinite(width)||length<1||width<1||length>200||width>200){notify('Gebruik afmetingen van 1 tot 200 meter');syncInputs();return}const old=clone(state);state.length=length;state.width=width;if(state.objects.some(o=>!o.registerOnly&&!fits(o))){state=old;notify('Stroken of paden vallen buiten de nieuwe tuingrens');syncInputs();return}checkpoint();history[history.length-1]=old;save();paint()}
 function syncInputs(){$('gardenWidth').value=state.length;$('gardenLength').value=state.width;$('year').value=state.year}
 $('gardenWidth').onchange=resizeGarden;$('gardenLength').onchange=resizeGarden;$('year').onchange=()=>{state.year=$('year').value;selected=null;selectedCell=null;save();paint()};
 const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clientX;p.y=evt.clientY;const matrix=svg.getScreenCTM();if(!matrix)return null;const q=p.matrixTransform(matrix.inverse());return{x:q.x-1,y:q.y-1}}
@@ -643,14 +688,13 @@ const svg=$('map');function point(evt){const p=svg.createSVGPoint();p.x=evt.clie
 // posities van die vakken mogen de nieuwe posities niet blokkeren.
 function reorderBedsDuringDrag(draggedId,desiredX,desiredY,axis){
  const moved=state.objects.find(o=>o.id===draggedId);
- if(!moved||moved.type!=='bed'||(moved.rotation||0)%180!==0)return false;
+ if(!moved||moved.type!=='bed'||moved.perennial||moved.parked||(moved.rotation||0)%180!==0)return false;
  const lane=gardenSection(moved);
  const key=axis==='x'?'x':'y',size=axis==='x'?'width':'length';
  const cross=axis==='x'?'y':'x',crossSize=axis==='x'?'length':'width';
  const sameBand=o=>Math.min(o[cross]+o[crossSize],moved[cross]+moved[crossSize])-Math.max(o[cross],moved[cross])>.05;
- const items=state.objects.filter(o=>o.type==='bed'&&gardenSection(o)===lane&&
-  (o.rotation||0)%180===0&&sameBand(o)&&
-  (o.perennial||moved.perennial||String(o.year)===String(moved.year)))
+ const items=state.objects.filter(o=>o.type==='bed'&&!o.perennial&&!o.parked&&gardenSection(o)===lane&&
+  (o.rotation||0)%180===0&&sameBand(o)&&String(o.year)===String(moved.year)&&visible(o))
   .sort((a,b)=>a[key]-b[key]||a.id-b.id);
  const from=items.findIndex(o=>o.id===draggedId);
  if(from<0||items.length<2)return false;
@@ -677,8 +721,7 @@ function reorderBedsDuringDrag(draggedId,desiredX,desiredY,axis){
    if(poly.some(q=>q.x<-eps||q.y<-eps||q.x>state.width+eps||q.y>state.length+eps))return false;
    if(![.5,5.5].some(left=>poly.every(q=>q.x>=left-eps&&q.x<=left+5+eps)))return false;
    return !state.objects.some(q=>!movingIds.has(q.id)&&
-    !(o.type==='bed'&&q.type==='bed'&&!o.perennial&&!q.perennial&&o.year&&q.year&&o.year!==q.year)&&
-    polygonsOverlap(poly,polygon(q)));
+    samePlacementSpace(o,q)&&polygonsOverlap(poly,polygon(q)));
   });
   if(valid&&items.every((o,i)=>items.slice(i+1).every(q=>!polygonsOverlap(polygon(o),polygon(q)))))return true;
  }
@@ -691,13 +734,18 @@ function reorderBedsDuringDrag(draggedId,desiredX,desiredY,axis){
 function dragDestination(d,ev){
  const p=point(ev);if(!p)return;
  const dx=p.x-d.start.x,dy=p.y-d.start.y;
- d.targetX=Math.round((d.x+dx)*100)/100;
+ const displayX=d.x+d.displayOffset+dx;
+ d.destination=d.open?(p.x<BUFFER_LEFT?'A':p.x<BUFFER_LEFT+BUFFER_WIDTH?'V':'B'):null;
+ const offset=d.destination==='V'?BUFFER_LEFT:d.destination==='B'?BUFFER_WIDTH:0;
+ d.targetX=Math.round((displayX-offset)*100)/100;
  d.targetY=Math.round((d.y+dy)*100)/100;
  if(Math.hypot(dx,dy)>.08)d.moved=true;
 }
 function placeDraggedBed(d){
  const o=state.objects.find(x=>x.id===d.id);
- if(!o)return false;
+ if(!o||o.perennial||!visible(o))return false;
+ if(d.open&&o.type==='path'&&d.destination==='V')return false;
+ if(d.open&&o.type==='bed')return placeBedWithBuffer(o,d);
  const tx=d.targetX,ty=d.targetY;
  const original={x:o.x,y:o.y};
  // Eerst rechtstreeks naar de eindplek, dus óók over een looppad heen
@@ -746,6 +794,50 @@ function placeDraggedBed(d){
  o.x=original.x;o.y=original.y;
  return false;
 }
+function placeBedWithBuffer(o,d){
+ const parked=d.destination==='V';
+ const left=parked?0:d.destination==='A'?.5:BUFFER_LEFT;
+ const right=parked?BUFFER_WIDTH:Math.min(state.width,left+5);
+ const {w,h}=dims(o);
+ if(w>right-left+.00001||h>state.length+.00001)return false;
+ const x=Math.max(left,Math.min(d.targetX,right-w));
+ const y=Math.max(0,Math.min(d.targetY,state.length-h));
+ const splitLegacy=parked&&!o.year;
+ const candidate={...o,x,y,parked};
+ if(splitLegacy)candidate.year=String(state.year);
+ const place=(nextX,nextY)=>{
+  candidate.x=nextX;candidate.y=nextY;
+  if(!fits(candidate))return false;
+  if(splitLegacy){
+   // Geef een oud gedeeld vak een eigen exemplaar voor dit jaar.
+   const year=String(state.year);
+   const copy=clone(candidate);
+   copy.id=state.nextId++;
+   copy.sections={[year]:clone(sections(o))};
+   delete copy.hiddenYears;
+   o.hiddenYears=[...(o.hiddenYears||[]),year];
+   delete o.sections[year];
+   state.objects.push(copy);
+   selected=copy.id;
+  }else{
+   o.x=nextX;o.y=nextY;
+   if(parked)o.parked=true;
+   else delete o.parked;
+  }
+  return true;
+ };
+ if(place(x,y))return true;
+ // Zelfde vrije-plekzoektocht als bij een gewone verplaatsing tussen A en B.
+ const xChoices=[x,left,right-w];
+ for(let step=0;step<=state.length*10;step++){
+  for(const nextY of step?[y-step/10,y+step/10]:[y]){
+   if(nextY<0||nextY+h>state.length+.00001)continue;
+   for(const nextX of xChoices)if(place(nextX,nextY))return true;
+  }
+ }
+ return !parked&&!o.parked&&gardenSection(o)===d.destination&&
+  reorderBedsDuringDrag(o.id,x,y,Math.abs(x-d.x)>Math.abs(y-d.y)?'x':'y');
+}
 svg.addEventListener('pointerdown',e=>{
  const g=e.target.closest('[data-id]');
  if(!g){selected=null;selectedCell=null;paint();return}
@@ -757,8 +849,12 @@ svg.addEventListener('pointerdown',e=>{
   const cell=selectedCell||{i:0,j:0};assignCatalogToCell(pendingAssignment,o,cell.i,cell.j);return
  }
  const pt=point(e);if(!o||!pt)return;
- drag={id,pointerId:e.pointerId,start:pt,x:o.x,y:o.y,
-  targetX:o.x,targetY:o.y,moved:false,original:clone(state)};
+ if(o.perennial){paint();return}
+ const open=bufferOpen();
+ const displayOffset=!open?0:o.parked?BUFFER_LEFT:
+  (o.type==='path'?pt.x>=BUFFER_LEFT+BUFFER_WIDTH:gardenSection(o)==='B')?BUFFER_WIDTH:0;
+ drag={id,pointerId:e.pointerId,start:pt,x:o.x,y:o.y,open,displayOffset,
+  targetX:o.x,targetY:o.y,moved:false,original:clone(state),plan:state};
  try{svg.setPointerCapture(e.pointerId)}catch{}
  paint();
 });
@@ -772,7 +868,7 @@ function endDrag(e){
  if(!drag||(e&&e.pointerId!==undefined&&e.pointerId!==drag.pointerId))return;
  const d=drag;drag=null;
  if(e&&e.type==='pointerup')dragDestination(d,e);
- if(d.moved){
+ if(e?.type==='pointerup'&&d.moved&&d.plan===state&&d.original.year===state.year){
   // Voorkom dat tussenstappen de plaatsing blokkeren.
   const ok=placeDraggedBed(d);
   if(ok){
@@ -902,6 +998,93 @@ $('catalogExport').onclick=()=>{ensureCatalog();downloadCsv([catalogColumns.map(
 function parseCsv(s){s=s.replace(/^\uFEFF/,'');const first=s.split(/\r?\n/,1)[0];const sep=(first.match(/;/g)||[]).length>=(first.match(/,/g)||[]).length?';':',';const rows=[];let row=[],field='',quoted=false;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(quoted&&s[i+1]==='"'){field+='"';i++}else quoted=!quoted}else if(c===sep&&!quoted){row.push(field);field=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&s[i+1]==='\n')i++;row.push(field);if(row.some(x=>x!==''))rows.push(row);row=[];field=''}else field+=c}if(quoted)throw Error('Onjuist CSV-bestand');row.push(field);if(row.some(x=>x!==''))rows.push(row);return rows}
 $('catalogImport').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const rows=parseCsv(await file.text());const expected=catalogColumns.map(x=>x[1]);if(!rows.length||expected.some((h,i)=>rows[0][i]!==h))throw Error('Kolomkoppen komen niet overeen. Exporteer eerst een voorbeeld vanuit de app.');const updates=[];const seen=new Set();for(const row of rows.slice(1)){const rec={};catalogColumns.forEach(([k],i)=>rec[k]=String(row[i]||'').trim());const crop=crops.findIndex(c=>c[0].toLowerCase()===rec.crop.toLowerCase());if(crop<1||!rec.name)throw Error('Ongeldig gewas of lege rasnaam in CSV');rec.crop=crop;rec.id=rec.id?Number(rec.id):null;if(rec.id!==null&&(!Number.isSafeInteger(rec.id)||rec.id<1||seen.has(rec.id)))throw Error('Ongeldig of dubbel ID');if(rec.id)seen.add(rec.id);updates.push(rec)}if(!confirm(`${updates.length} regels importeren? Bestaande ID’s worden bijgewerkt; andere regels worden toegevoegd. Maak eerst een JSON-back-up.`))return;ensureCatalog();checkpoint();for(const rec of updates){let existing=state.catalog.find(x=>x.id===rec.id);if(existing)Object.assign(existing,rec);else{if(!rec.id||state.catalog.some(x=>x.id===rec.id))rec.id=state.nextCatalogId++;else state.nextCatalogId=Math.max(state.nextCatalogId,rec.id+1);state.catalog.push(rec)}}save();paint();notify('✓ Moestuinregister geïmporteerd')}catch(err){alert('Import mislukt: '+err.message)}finally{e.target.value=''}};
 
+const planningControls=document.createElement('div');
+planningControls.className='toolbar';
+const copyYearButton=document.createElement('button');
+copyYearButton.type='button';
+copyYearButton.textContent='Kopieer gehele tuinjaar';
+copyYearButton.onclick=copyGardenYear;
+const bufferButton=document.createElement('button');
+bufferButton.type='button';
+bufferButton.style.backgroundColor='#286646';
+bufferButton.style.color='#fff';
+bufferButton.setAttribute('aria-controls','map');
+bufferButton.onclick=()=>{
+ if(parkedBeds().length){
+  alert('Sleep eerst alle vakken uit het Verschuifvak terug naar A of B.');
+  return;
+ }
+ openBufferYear=bufferOpen()?null:String(state.year);
+ paint();
+};
+planningControls.append(copyYearButton,bufferButton);
+$('mapOuter').before(planningControls);
+
+function renderPlanningControls(){
+ const count=parkedBeds().length;
+ if(count)openBufferYear=String(state.year);
+ const open=bufferOpen();
+ bufferButton.textContent=count?`Verschuifvak · ${count} ${count===1?'vak':'vakken'}`:
+  open?'Verschuifvak sluiten':'Verschuifvak tonen';
+ bufferButton.setAttribute('aria-expanded',String(open));
+ bufferButton.title=count?'Sleep eerst alle vakken terug naar A of B':'';
+}
+
+function copyGardenYear(){
+ const from=String(state.year);
+ if(parkedBeds().length){alert('Maak het Verschuifvak van '+from+' eerst leeg.');return}
+ const yearControl=$('year');
+ const years=yearControl.options?[...yearControl.options].map(option=>option.value):
+  Array.from({length:10},(_,i)=>String(i+2026));
+ const targets=years.filter(year=>/^20(2[6-9]|3[0-5])$/.test(year)&&year!==from);
+ if(!targets.length){alert('Er is geen ander tuinjaar beschikbaar.');return}
+ const answer=prompt(`Kopieer de indeling van ${from} naar welk jaar? Kies ${targets.join(', ')}.`,
+  targets.includes(String(Number(from)+1))?String(Number(from)+1):targets[0]);
+ if(answer===null)return;
+ const to=answer.trim();
+ if(!targets.includes(to)){alert('Kies een geldig ander tuinjaar.');return}
+ const isAnnual=o=>o.type==='bed'&&!o.perennial;
+ const source=state.objects.filter(o=>isAnnual(o)&&isInYear(o,from));
+ if(!source.length){alert('In '+from+' staan geen jaargebonden vakken om te kopiëren.');return}
+ const existing=state.objects.filter(o=>isAnnual(o)&&isInYear(o,to));
+ if(existing.some(o=>o.parked)){alert('Maak het Verschuifvak van '+to+' eerst leeg.');return}
+ if(existing.length&&!confirm(`Vervang de ${existing.length} bestaande jaarvakken van ${to}, inclusief hun teeltgegevens? ${from} blijft behouden.`))return;
+ let nextId=state.nextId;
+ const copied=source.map(bed=>{
+  const copy=clone(bed);
+  // Normaliseer oudere vakindelingen op de kopie, zodat het bronjaar intact blijft.
+  const rows=sections(copy);
+  for(const row of rows)for(const cell of row.cols){
+   if(!Array.isArray(cell.varieties))continue;
+   cell.varieties=cell.varieties.map(v=>{
+    const variety=newVariety(cell.crop,v.name);
+    for(const key of ['catalogId','shop','price','amount','month','repeat']){
+     if(Object.hasOwn(v,key))variety[key]=v[key];
+    }
+    return variety;
+   });
+  }
+  delete copy.hiddenYears;
+  return {...copy,id:nextId++,year:to,perennialSource:to,sections:{[to]:rows}};
+ });
+ checkpoint();
+ const replaced=new Set(existing);
+ state.objects=state.objects.flatMap(o=>{
+  if(!replaced.has(o))return [o];
+  const sections={...o.sections};
+  delete sections[to];
+  // Behoud registraties uit andere jaren, ook bij oudere gedeelde vakken.
+  if(!o.year)return [{...o,sections,hiddenYears:[...(o.hiddenYears||[]),to]}];
+  if(Object.keys(sections).length)return [{...o,sections,registerOnly:true}];
+  return [];
+ });
+ state.objects.push(...copied);
+ state.nextId=nextId;
+ state.year=to;
+ selected=null;selectedCell=null;pendingAssignment=null;openBufferYear=null;
+ save();syncInputs();paint();
+ notify(`✓ Tuinplan van ${from} gekopieerd naar ${to}`);
+}
 syncInputs();paint();applyZoom();updateUndo();
 
 // Veilige toegang voor Firebase: externe synchronisatie kan alleen via deze twee functies.

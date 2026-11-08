@@ -1,5 +1,5 @@
 'use strict';
-// Mijn Slimme Moestuin 2.2.4 — jaarkopie en Verschuifvak
+// Mijn Slimme Moestuin 2.2.5 — jaarkopie en Verschuifvak
 const KEY='mijn-slimme-moestuin-v1';
 // Geen automatische opslag bij het openen: beschermt bestaande tuinplannen.
 const crops=[['Leeg','#d5d8c9'],['Aardappel','#a9c984'],['Wortel','#edc27b'],['Ui','#b9c7ec'],['Bonen','#9ed2af'],['Kool','#d8a6bb'],['Sla','#b6db86'],['Prei','#a4c9d4'],['Biet','#d6a0a0'],['Spinazie','#7ebf8e']];
@@ -58,13 +58,13 @@ $('mapZoom').addEventListener('input',e=>{mapZoom=Number(e.target.value);applyZo
 $('zoomOut').onclick=()=>{mapZoom=Math.max(40,mapZoom-10);applyZoom()};
 
 $('zoomIn').onclick=()=>{mapZoom=Math.min(200,mapZoom+10);applyZoom()};
-const BUFFER_LEFT=5.5,BUFFER_WIDTH=5;
+const BUFFER_LEFT=5.5,BUFFER_WIDTH=5.2;
 const isInYear=(o,year)=>o.type==='path'||o.perennial||
  (!o.registerOnly&&!o.hiddenYears?.includes(String(year))&&(!o.year||String(o.year)===String(year)));
 const visible=o=>isInYear(o,state.year);
 let openBufferYear=null;
-const parkedBeds=()=>state.objects.filter(o=>o.parked&&visible(o));
-const bufferOpen=()=>openBufferYear===String(state.year)||parkedBeds().length>0;
+const parkedObjects=()=>state.objects.filter(o=>o.parked&&visible(o));
+const bufferOpen=()=>openBufferYear===String(state.year)||parkedObjects().length>0;
 const activeObjects=()=>state.objects.filter(visible);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('status').textContent='✓ Lokaal opgeslagen';if(window.gardenCloudChanged)window.gardenCloudChanged(clone(state))}catch{$('status').textContent='Opslag niet beschikbaar'}}
 function checkpoint(){history.push(clone(state));if(history.length>40)history.shift();storeHistory();updateUndo()}
@@ -97,9 +97,9 @@ function polygonsOverlap(a,b){
 function fits(o,exclude=o.id){
  const poly=polygon(o),eps=.00001;
  if(poly.some(p=>p.x<-eps||p.y<-eps||p.x>(o.parked?BUFFER_WIDTH:state.width)+eps||p.y>state.length+eps))return false;
- if(o.parked&&(o.type!=='bed'||o.perennial))return false;
+ if(o.parked&&o.perennial)return false;
  if(o.type==='bed'&&!o.parked&&!([.5,5.5].some(left=>poly.every(p=>p.x>=left-eps&&p.x<=left+5+eps))))return false;
- if(o.type==='path'&&poly.some(p=>p.x<.5-eps||p.x>10.5+eps))return false;
+ if(o.type==='path'&&!o.parked&&poly.some(p=>p.x<.5-eps||p.x>10.5+eps))return false;
  return !state.objects.some(q=>q.id!==exclude&&samePlacementSpace(o,q)&&polygonsOverlap(poly,polygon(q)));
 }
 function samePlacementSpace(o,q){
@@ -135,7 +135,7 @@ if(gap){
  add('rect',{x:pad+BUFFER_LEFT,y:pad,width:gap,height:state.length,fill:'#e8f3e8',stroke:'#39764e','stroke-width':'.07','stroke-dasharray':'.3 .16'});
  for(const y of [.65,state.length/2]){
   const title=add('text',{x:pad+BUFFER_LEFT+gap/2,y:pad+y,'text-anchor':'middle','font-size':'.56','font-weight':'bold',fill:'#25563b','pointer-events':'none'});
-  title.textContent='Verschuifvak';
+  title.textContent='Verschuifvak · 5,20 m';
  }
 }
 for(let x=0;x<=mapWidth;x++){add('line',{x1:x+pad,y1:pad,x2:x+pad,y2:pad+state.length,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}for(let y=0;y<=state.length;y++){add('line',{x1:pad,y1:y+pad,x2:pad+mapWidth,y2:y+pad,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}
@@ -210,6 +210,10 @@ const pathLayers=gap?[0,gap].map(shift=>{
 }):null;
 for(const o of objects){
  if(o.type!=='path'||o===draggedPath)continue;
+ if(o.parked){
+  drawPath(o,svg,BUFFER_LEFT);
+  continue;
+ }
  const crosses=o.x<BUFFER_LEFT-.00001&&o.x+dims(o).w>BUFFER_LEFT+.00001;
  if(!gap||!crosses){
   drawPath(o,svg,o.x>=BUFFER_LEFT-.00001?gap:0);
@@ -236,8 +240,7 @@ for(const o of objects){
 }
 if(draggedPath){
  const preview=add('g',{'data-path-preview':'','pointer-events':'none','opacity':'.8'});
- const gripOffset=drag.start.x-pathMapX(drag.start.x,drag.open);
- drawPath(draggedPath,preview,gripOffset);
+ drawPath(draggedPath,preview,drag.displayOffset);
  drag.preview=preview;
 }
 renderPlanningControls();
@@ -776,11 +779,8 @@ function dragDestination(d,ev){
  const dx=p.x-d.start.x,dy=p.y-d.start.y;
  d.destination=d.open?(p.x<BUFFER_LEFT?'A':p.x<BUFFER_LEFT+BUFFER_WIDTH?'V':'B'):null;
  const offset=d.destination==='V'?BUFFER_LEFT:d.destination==='B'?BUFFER_WIDTH:0;
- // Voor looppaden telt de werkelijke afstand. Het Verschuifvak voegt
- // alleen tekenruimte toe en een pad dat over de naad loopt blijft één object.
- const movementX=d.path?pathMapX(p.x,d.open)-pathMapX(d.start.x,d.open):dx;
- const targetX=d.path?d.x+movementX:d.x+d.displayOffset+movementX-offset;
- d.targetX=Math.round(targetX*100)/100;
+ // Vertaal de visuele eindpositie naar de gekozen strook.
+ d.targetX=Math.round((d.x+d.displayOffset+dx-offset)*100)/100;
  d.targetY=Math.round((d.y+dy)*100)/100;
  if(Math.hypot(dx,dy)>.08)d.moved=true;
  if(d.preview&&d.moved)d.preview.setAttribute('transform',`translate(${dx} ${dy})`);
@@ -788,7 +788,7 @@ function dragDestination(d,ev){
 function placeDraggedBed(d){
  const o=state.objects.find(x=>x.id===d.id);
  if(!o||o.perennial||!visible(o))return false;
- if(o.type==='path')return placeDraggedPath(o,d.targetX,d.targetY);
+ if(o.type==='path')return placeDraggedPath(o,d);
  if(d.open&&o.type==='bed')return placeBedWithBuffer(o,d);
  const tx=d.targetX,ty=d.targetY;
  const original={x:o.x,y:o.y};
@@ -827,14 +827,30 @@ function placeDraggedBed(d){
 function pathMapX(x,open){
  return open&&x>BUFFER_LEFT?Math.max(BUFFER_LEFT,x-BUFFER_WIDTH):x;
 }
-function placeDraggedPath(o,targetX,targetY){
+function placeDraggedPath(o,d){
+ const parked=d.destination==='V';
  const {w,h}=dims(o);
- const left=.5,right=Math.min(state.width,10.5)-w,bottom=state.length-h;
+ let left=parked?0:.5;
+ let end=parked?BUFFER_WIDTH:Math.min(state.width,10.5);
+ if(o.parked&&!parked&&w<=5){
+  if(d.destination==='A')end=Math.min(end,BUFFER_LEFT);
+  if(d.destination==='B')left=BUFFER_LEFT;
+ }
+ const right=end-w,bottom=state.length-h;
  if(right<left-.00001||bottom<-.00001)return false;
- const x=Math.max(left,Math.min(targetX,right));
- const y=Math.max(0,Math.min(targetY,bottom));
- if(Math.hypot(x-o.x,y-o.y)<.00001)return false;
- if(fits({...o,x,y})){Object.assign(o,{x,y});return true}
+ const x=Math.max(left,Math.min(d.targetX,right));
+ const y=Math.max(0,Math.min(d.targetY,bottom));
+ const changedPosition=(x,y)=>parked!==Boolean(o.parked)||Math.hypot(x-o.x,y-o.y)>.00001;
+ if(!changedPosition(x,y))return false;
+ const place=(x,y)=>{
+  if(!fits({...o,x,y,parked}))return false;
+  Object.assign(o,{x,y});
+  if(parked)o.parked=true;
+  else delete o.parked;
+  return true;
+ };
+ if(place(x,y))return true;
+ if(parked)return false;
  // Probeer ook de exacte randen en de oorspronkelijke X of Y. Dat is
  // nodig voor een pad dat strak tussen vakken doorloopt.
  const coordinates=(target,min,max,original)=>{
@@ -849,21 +865,19 @@ function placeDraggedPath(o,targetX,targetY){
  const xs=coordinates(x,left,right,o.x);
  const ys=coordinates(y,0,bottom,o.y);
  const candidates=xs.flatMap(x=>ys.map(y=>({x,y})))
-  .filter(p=>Math.hypot(p.x-o.x,p.y-o.y)>.00001)
+  .filter(p=>changedPosition(p.x,p.y))
   .sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y));
- const position=candidates.find(p=>fits({...o,...p}));
- if(!position)return false;
- Object.assign(o,position);
- return true;
+ return candidates.some(p=>place(p.x,p.y));
 }
 function nearbyPath(point,open){
- if(!point||(open&&point.x>BUFFER_LEFT&&point.x<BUFFER_LEFT+BUFFER_WIDTH))return null;
+ if(!point)return null;
+ const inBuffer=open&&point.x>=BUFFER_LEFT&&point.x<BUFFER_LEFT+BUFFER_WIDTH;
  const matrix=svg.getScreenCTM();
  const tolerance=6/Math.hypot(matrix?.a||1,matrix?.b||0);
- const x=pathMapX(point.x,open);
+ const x=inBuffer?point.x-BUFFER_LEFT:pathMapX(point.x,open);
  let closest=null,distance=tolerance;
  for(const o of activeObjects()){
-  if(o.type!=='path')continue;
+  if(o.type!=='path'||Boolean(o.parked)!==inBuffer)continue;
   const {w,h}=dims(o);
   const r=rotationInfo(o);
   const angle=-r.localAngle*Math.PI/180;
@@ -934,7 +948,8 @@ svg.addEventListener('pointerdown',e=>{
  }
  if(!pt)return;
  if(o.perennial){paint();return}
- const displayOffset=!open?0:o.parked?BUFFER_LEFT:gardenSection(o)==='B'?BUFFER_WIDTH:0;
+ let displayOffset=!open?0:o.parked?BUFFER_LEFT:gardenSection(o)==='B'?BUFFER_WIDTH:0;
+ if(o.type==='path'&&!o.parked)displayOffset=pt.x-pathMapX(pt.x,open);
  drag={id,pointerId:e.pointerId,start:pt,x:o.x,y:o.y,open,displayOffset,path:o.type==='path',
   targetX:o.x,targetY:o.y,moved:false,original:clone(state),plan:state};
  try{svg.setPointerCapture(e.pointerId)}catch{}
@@ -959,7 +974,9 @@ function endDrag(e){
   }
   paint();
   if(d.path){
-   pathMoveStatus.textContent=ok?'Looppad verplaatst.':'Geen vrije plek voor dit looppad. Een gedeeld pad moet in alle tuinjaren vrij liggen.';
+   pathMoveStatus.textContent=d.destination==='V'
+    ?(ok?'Looppad staat in het Verschuifvak.':'Geen vrije plek voor dit looppad in het Verschuifvak van 5,20 m breed.')
+    :(ok?'Looppad verplaatst.':'Geen vrije plek voor dit looppad. Een gedeeld pad moet in alle tuinjaren vrij liggen.');
   }else if(!ok)notify('Op de gekozen plek is geen ruimte voor dit vak');
  }else if(d.path)paint();
  try{if(svg.hasPointerCapture(d.pointerId))svg.releasePointerCapture(d.pointerId)}catch{}
@@ -1104,8 +1121,8 @@ bufferButton.style.backgroundColor='#286646';
 bufferButton.style.color='#fff';
 bufferButton.setAttribute('aria-controls','map');
 bufferButton.onclick=()=>{
- if(parkedBeds().length){
-  alert('Sleep eerst alle vakken uit het Verschuifvak terug naar A of B.');
+ if(parkedObjects().length){
+  alert('Sleep eerst alle vakken en looppaden uit het Verschuifvak terug naar A of B.');
   return;
  }
  openBufferYear=bufferOpen()?null:String(state.year);
@@ -1117,18 +1134,20 @@ $('mapOuter').before(activeYearLabel,planningControls);
 function renderPlanningControls(){
  const title=`Tuinjaar ${state.year}`;
  if(activeYearLabel.textContent!==title)activeYearLabel.textContent=title;
- const count=parkedBeds().length;
+ const objects=parkedObjects();
+ const count=objects.length;
  if(count)openBufferYear=String(state.year);
  const open=bufferOpen();
- bufferButton.textContent=count?`Verschuifvak · ${count} ${count===1?'vak':'vakken'}`:
+ const label=count===1?(objects[0].type==='path'?'1 looppad':'1 vak'):`${count} geparkeerd`;
+ bufferButton.textContent=count?`Verschuifvak · ${label}`:
   open?'Verschuifvak sluiten':'Verschuifvak tonen';
  bufferButton.setAttribute('aria-expanded',String(open));
- bufferButton.title=count?'Sleep eerst alle vakken terug naar A of B':'';
+ bufferButton.title=count?'Sleep eerst alle vakken en looppaden terug naar A of B':'';
 }
 
 function copyGardenYear(){
  const from=String(state.year);
- if(parkedBeds().length){alert('Maak het Verschuifvak van '+from+' eerst leeg.');return}
+ if(parkedObjects().length){alert('Maak het Verschuifvak van '+from+' eerst leeg.');return}
  const yearControl=$('year');
  const years=yearControl.options?[...yearControl.options].map(option=>option.value):
   Array.from({length:10},(_,i)=>String(i+2026));

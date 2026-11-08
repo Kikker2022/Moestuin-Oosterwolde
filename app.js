@@ -1,5 +1,5 @@
 'use strict';
-// Mijn Slimme Moestuin 2.2.2 — jaarkopie en Verschuifvak
+// Mijn Slimme Moestuin 2.2.3 — jaarkopie en Verschuifvak
 const KEY='mijn-slimme-moestuin-v1';
 // Geen automatische opslag bij het openen: beschermt bestaande tuinplannen.
 const crops=[['Leeg','#d5d8c9'],['Aardappel','#a9c984'],['Wortel','#edc27b'],['Ui','#b9c7ec'],['Bonen','#9ed2af'],['Kool','#d8a6bb'],['Sla','#b6db86'],['Prei','#a4c9d4'],['Biet','#d6a0a0'],['Spinazie','#7ebf8e']];
@@ -119,6 +119,25 @@ function sections(o){
 }
 function areaRows(o){return sections(o).reduce((sum,r)=>sum+r.length*r.cols.reduce((s,c)=>s+c.width,0),0)}
 function gardenSection(o){if(o.parked)return 'V';const d=dims(o),mid=o.x+d.w/2;return mid<BUFFER_LEFT?'A':'B'}
+// Voeg op de naad tekenruimte toe zonder de afmetingen van het pad te wijzigen.
+function projectPath(points,gap,crosses,closed){
+ if(!gap)return points;
+ const right=p=>p.x>BUFFER_LEFT;
+ const shift=p=>({x:p.x+(right(p)?gap:0),y:p.y});
+ if(!crosses){
+  const offset=points.some(p=>p.x>BUFFER_LEFT+.00001)?gap:0;
+  return points.map(p=>({x:p.x+offset,y:p.y}));
+ }
+ const result=[];
+ points.forEach((p,i)=>{
+  result.push(shift(p));
+  const q=points[i+1]||(closed?points[0]:null);
+  if(!q||right(p)===right(q))return;
+  const y=p.y+(q.y-p.y)*(BUFFER_LEFT-p.x)/(q.x-p.x);
+  result.push({x:BUFFER_LEFT+(right(p)?gap:0),y},{x:BUFFER_LEFT+(right(q)?gap:0),y});
+ });
+ return result;
+}
 function paint(){const svg=$('map');svg.replaceChildren();const NS='http://www.w3.org/2000/svg';const add=(tag,attrs,parent=svg)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));parent.appendChild(e);return e};const pad=1;
 const gap=bufferOpen()?BUFFER_WIDTH:0;
 const mapWidth=state.width+gap;
@@ -139,67 +158,80 @@ if(gap){
  }
 }
 for(let x=0;x<=mapWidth;x++){add('line',{x1:x+pad,y1:pad,x2:x+pad,y2:pad+state.length,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}for(let y=0;y<=state.length;y++){add('line',{x1:pad,y1:y+pad,x2:pad+mapWidth,y2:y+pad,stroke:'#ffffff','stroke-opacity':'.4','stroke-width':'.025'})}
-// Een gedeeld looppad over de grens wordt aan beide zijden van de tijdelijke strook getekend.
-const paths=gap?[0,gap].map((shift,index)=>{
- const id=`garden-path-clip-${index}`;
- const left=index?BUFFER_LEFT+gap:0;
- const width=index?Math.max(0,state.width-BUFFER_LEFT):BUFFER_LEFT;
- const clip=add('clipPath',{id});
- add('rect',{x:pad+left,y:pad,width,height:state.length},clip);
- return {shift,group:add('g',{'clip-path':`url(#${id})`})};
-}):null;
+function drawPath(o,parent=svg){
+ const corners=polygon(o);
+ const crosses=o.x<BUFFER_LEFT-.00001&&o.x+dims(o).w>BUFFER_LEFT+.00001;
+ const points=(vertices,closed)=>projectPath(vertices,gap,crosses,closed)
+  .map(({x,y})=>`${pad+x},${pad+y}`).join(' ');
+ const g=add('g',{'data-id':o.id,'data-path-outline':'','cursor':'grab'},parent);
+ const active=selected===o.id;
+ add('polygon',{points:points(corners,true),fill:'#eee8d8',
+  stroke:active?'#20583c':'#8e957e','stroke-width':active?.045:.025},g);
+ const middle=(a,b)=>({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
+ const r=rotationInfo(o);
+ const ends=r.w>=r.h?[middle(corners[0],corners[3]),middle(corners[1],corners[2])]:
+  [middle(corners[0],corners[1]),middle(corners[3],corners[2])];
+ add('polyline',{points:points(ends,false),fill:'none',stroke:'#9c927d',
+  'stroke-width':'.045','stroke-dasharray':'.18 .16','pointer-events':'none'},g);
+ const label=add('text',{x:pad+o.x+(gap&&o.x>=BUFFER_LEFT?gap:0)+.1,y:pad+o.y+.27,
+  'font-size':'.19',fill:'#1f432b','pointer-events':'none'},g);
+ label.textContent=`P${String(o.id).padStart(2,'0')}`;
+ return g;
+}
 function drawObject(o,x,parent=svg){
  const g=add('g',{'data-id':o.id,transform:`translate(${pad+x} ${pad+o.y})`},parent);
  const d=dims(o),r=rotationInfo(o),active=selected===o.id;
  const shape=r.localAngle?add('g',{transform:`translate(${d.w/2} ${d.h/2}) rotate(${r.localAngle}) translate(${-r.w/2} ${-r.h/2})`},g):g;
  const shapeW=r.w,shapeH=r.h;
- add('rect',{x:0,y:0,width:shapeW,height:shapeH,rx:.08,fill:o.type==='path'?'#eee8d8':'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.028:.012},shape);
- if(o.type==='path'){
-  add('line',{x1:shapeW/2,y1:.08,x2:shapeW/2,y2:shapeH-.08,stroke:'#b9b29f','stroke-width':'.045','stroke-dasharray':'.18 .16'},shape);
- }else{
-  let along=0;
-  sections(o).forEach((row,i)=>{
-   let across=0;
-   row.cols.forEach((col,j)=>{
-    const crop=crops[col.crop]||crops[0];
-    const x=!r.swapped?across:along;
-    const y=!r.swapped?along:across;
-    const w=!r.swapped?col.width:row.length;
-    const h=!r.swapped?row.length:col.width;
-    add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},shape);
-    // Naam en ras blijven ook in smalle stroken leesbaar: draai de tekst
-    // wanneer het vak hoger dan breed is. Bij weinig ruimte verklein de tekst.
-    const names=(col.varieties||[]).map(v=>v.name).filter(Boolean);
-    const customName=String(col.label||'').trim();
-    const line1=customName||crop[0];
-    const line2=names.length?names.join(', '):'';
-    const lines=[line1,...(line2?[line2]:[])];
-    const vertical=h>w*1.4;
-    const availW=vertical?h:w,availH=vertical?w:h;
-    const longest=Math.max(...lines.map(v=>v.length),1);
-    const fontSize=Math.max(.045,Math.min(.28,availH/(lines.length*1.4),availW/(longest*.57)));
-    const labelGroup=vertical?add('g',{transform:`translate(${x+w/2} ${y+h/2}) rotate(-90)`},shape):add('g',{transform:`translate(${x+w/2} ${y+h/2})`},shape);
-    lines.forEach((line,li)=>{
-      const text=add('text',{x:0,y:(li-(lines.length-1)/2)*fontSize*1.15,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'650',fill:'#173924','pointer-events':'none'},labelGroup);
-      text.textContent=line;
-    });
-    across+=col.width;
+ add('rect',{x:0,y:0,width:shapeW,height:shapeH,rx:.08,fill:'#a2c98a',stroke:active?'#20583c':'#8e957e','stroke-width':active?.028:.012},shape);
+ let along=0;
+ sections(o).forEach((row,i)=>{
+  let across=0;
+  row.cols.forEach((col,j)=>{
+   const crop=crops[col.crop]||crops[0];
+   const x=!r.swapped?across:along;
+   const y=!r.swapped?along:across;
+   const w=!r.swapped?col.width:row.length;
+   const h=!r.swapped?row.length:col.width;
+   add('rect',{x,y,width:w,height:h,fill:crop[1],stroke:selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'#ff8b00':'#385b39','stroke-width':selected===o.id&&selectedCell?.i===i&&selectedCell?.j===j?'.045':'.012','data-row':i,'data-col':j},shape);
+   // Naam en ras blijven ook in smalle stroken leesbaar: draai de tekst
+   // wanneer het vak hoger dan breed is. Bij weinig ruimte verklein de tekst.
+   const names=(col.varieties||[]).map(v=>v.name).filter(Boolean);
+   const customName=String(col.label||'').trim();
+   const line1=customName||crop[0];
+   const line2=names.length?names.join(', '):'';
+   const lines=[line1,...(line2?[line2]:[])];
+   const vertical=h>w*1.4;
+   const availW=vertical?h:w,availH=vertical?w:h;
+   const longest=Math.max(...lines.map(v=>v.length),1);
+   const fontSize=Math.max(.045,Math.min(.28,availH/(lines.length*1.4),availW/(longest*.57)));
+   const labelGroup=vertical?add('g',{transform:`translate(${x+w/2} ${y+h/2}) rotate(-90)`},shape):add('g',{transform:`translate(${x+w/2} ${y+h/2})`},shape);
+   lines.forEach((line,li)=>{
+     const text=add('text',{x:0,y:(li-(lines.length-1)/2)*fontSize*1.15,'text-anchor':'middle','dominant-baseline':'middle','font-size':fontSize,'font-weight':'650',fill:'#173924','pointer-events':'none'},labelGroup);
+     text.textContent=line;
    });
-   along+=row.length;
+   across+=col.width;
   });
-  add('rect',{x:0,y:0,width:shapeW,height:shapeH,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.028:.012},shape);
- }
+  along+=row.length;
+ });
+ add('rect',{x:0,y:0,width:shapeW,height:shapeH,fill:'none',stroke:active?'#215a3e':'#68846a','stroke-width':active?.028:.012},shape);
  const t=add('text',{x:.1,y:.27,'font-size':'.19','font-weight':'400',fill:'#1f432b','pointer-events':'none'},shape);
- t.textContent=o.type==='bed'?`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`:`P${String(o.id).padStart(2,'0')}`;
+ t.textContent=`${gardenSection(o)}-S${String(o.id).padStart(2,'0')}`;
 }
-activeObjects().forEach(o=>{
- if(paths&&o.type==='path'){
-  for(const {shift,group} of paths)drawObject(o,o.x+shift,group);
- }else{
-  const x=o.parked?BUFFER_LEFT+o.x:o.x+(gardenSection(o)==='B'?gap:0);
-  drawObject(o,x);
- }
-});
+const objects=activeObjects();
+const draggedPath=drag?.path&&drag.plan===state&&drag.original.year===state.year?
+ objects.find(o=>o.id===drag.id):null;
+for(const o of objects)if(o.type==='path'&&o!==draggedPath)drawPath(o);
+for(const o of objects){
+ if(o.type==='path')continue;
+ const x=o.parked?BUFFER_LEFT+o.x:o.x+(gardenSection(o)==='B'?gap:0);
+ drawObject(o,x);
+}
+if(draggedPath){
+ const preview=add('g',{'data-path-preview':'','pointer-events':'none','opacity':'.8'});
+ drawPath(draggedPath,preview);
+ drag.preview=preview;
+}
 renderPlanningControls();
 $('areaText').textContent=state.layout==='AB-30x5'?'Teeltgrond: 300 m² · buitenpaden: 30 m² · totaal: 330 m²':`Oppervlakte: ${(state.length*state.width).toLocaleString('nl-NL',{maximumFractionDigits:2})} m²`;renderEditor();renderTotals();renderLibrary();renderRegister();renderCatalog()}
 function renderTotals(){
@@ -743,6 +775,7 @@ function dragDestination(d,ev){
  d.targetX=Math.round(targetX*100)/100;
  d.targetY=Math.round((d.y+dy)*100)/100;
  if(Math.hypot(dx,dy)>.08)d.moved=true;
+ if(d.preview&&d.moved)d.preview.setAttribute('transform',`translate(${dx} ${dy})`);
 }
 function placeDraggedBed(d){
  const o=state.objects.find(x=>x.id===d.id);
@@ -920,7 +953,7 @@ function endDrag(e){
   if(d.path){
    pathMoveStatus.textContent=ok?'Looppad verplaatst.':'Geen vrije plek voor dit looppad. Een gedeeld pad moet in alle tuinjaren vrij liggen.';
   }else if(!ok)notify('Op de gekozen plek is geen ruimte voor dit vak');
- }
+ }else if(d.path)paint();
  try{if(svg.hasPointerCapture(d.pointerId))svg.releasePointerCapture(d.pointerId)}catch{}
 }
 svg.addEventListener('pointerup',endDrag);
@@ -1046,6 +1079,11 @@ const pathMoveStatus=document.createElement('p');
 pathMoveStatus.className='hint';
 pathMoveStatus.setAttribute('role','status');
 $('mapOuter').after(pathMoveStatus);
+const activeYearLabel=document.createElement('strong');
+activeYearLabel.id='activeGardenYear';
+activeYearLabel.setAttribute('aria-live','polite');
+activeYearLabel.style.display='block';
+activeYearLabel.style.marginBlock='0.5rem';
 const planningControls=document.createElement('div');
 planningControls.className='toolbar';
 const copyYearButton=document.createElement('button');
@@ -1066,9 +1104,11 @@ bufferButton.onclick=()=>{
  paint();
 };
 planningControls.append(copyYearButton,bufferButton);
-$('mapOuter').before(planningControls);
+$('mapOuter').before(activeYearLabel,planningControls);
 
 function renderPlanningControls(){
+ const title=`Tuinjaar ${state.year}`;
+ if(activeYearLabel.textContent!==title)activeYearLabel.textContent=title;
  const count=parkedBeds().length;
  if(count)openBufferYear=String(state.year);
  const open=bufferOpen();
